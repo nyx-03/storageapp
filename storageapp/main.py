@@ -14,7 +14,7 @@ from storageapp.providers.mock import MockDiskProvider
 from storageapp.providers.linux_lsblk import LinuxLsblkProvider
 from storageapp.services.state import ActiveDiskState
 from storageapp.services.disks import DiskService
-from storageapp.services.import_jobs import ImportJobStore, run_rsync_job, job_to_dict
+from storageapp.services.import_jobs import ImportJobStore, run_rsync_job, job_to_dict, ImportBusyError
 from storageapp.services.sd_detect import find_media_sources
 
 from fastapi import UploadFile, File
@@ -124,9 +124,6 @@ def api_sd_sources():
 @app.post("/api/import-sd")
 def api_import_sd(req: ImportRequest, background: BackgroundTasks):
     """Lance un import rsync depuis la carte SD vers le disque actif."""
-    if import_store.has_running():
-        raise HTTPException(status_code=409, detail="An import job is already running")
-
     active = service.get_active()
     if not active:
         raise HTTPException(status_code=400, detail="No active disk selected")
@@ -150,7 +147,9 @@ def api_import_sd(req: ImportRequest, background: BackgroundTasks):
 
     dest = Path(active.mountpoint) / "imports" / date.today().isoformat() / src.name
     try:
-        job = import_store.create(source=str(src), dest=str(dest), ignore_existing=req.ignore_existing)
+        job = import_store.create_if_available(source=str(src), dest=str(dest), ignore_existing=req.ignore_existing)
+    except ImportBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         logger.exception("Failed to create import job")
         raise HTTPException(status_code=500, detail=f"Failed to create import job: {e}")

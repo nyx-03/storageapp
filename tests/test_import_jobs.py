@@ -9,7 +9,7 @@ def test_has_running(monkeypatch, tmp_path):
     monkeypatch.setenv("STORAGEAPP_JOBS_FILE", str(tmp_path / "jobs.json"))
     store = import_jobs.ImportJobStore()
     job = store.create("src", "dst")
-    assert store.has_running() is False
+    assert store.has_running() is True
 
     job.status = "running"
     store.update(job)
@@ -29,6 +29,15 @@ def test_create_rolls_back_on_save_error(monkeypatch, tmp_path):
         store.create("src", "dst")
 
     assert store.list() == []
+
+
+def test_create_if_available_blocks_when_active(monkeypatch, tmp_path):
+    monkeypatch.setenv("STORAGEAPP_JOBS_FILE", str(tmp_path / "jobs.json"))
+    store = import_jobs.ImportJobStore()
+    store.create("src", "dst")
+
+    with pytest.raises(import_jobs.ImportBusyError):
+        store.create_if_available("src2", "dst2")
 
 
 def test_run_rsync_job_marks_failed_on_mkdir_error(monkeypatch, tmp_path):

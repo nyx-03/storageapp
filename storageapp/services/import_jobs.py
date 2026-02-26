@@ -34,6 +34,11 @@ class ImportJob:
 # Default location on Raspberry Pi. In dev, we can override with STORAGEAPP_JOBS_FILE.
 DEFAULT_JOBS_FILE = Path("/var/lib/storageapp/import_jobs.json")
 logger = logging.getLogger(__name__)
+ACTIVE_STATUSES = {"queued", "running"}
+
+
+class ImportBusyError(RuntimeError):
+    pass
 
 
 def _jobs_file_path() -> Path:
@@ -171,7 +176,32 @@ class ImportJobStore:
 
     def has_running(self) -> bool:
         with self._lock:
-            return any(j.status == "running" for j in self.jobs.values())
+            return any(j.status in ACTIVE_STATUSES for j in self.jobs.values())
+
+    def create_if_available(self, source: str, dest: str, ignore_existing: bool = False) -> ImportJob:
+        with self._lock:
+            if any(j.status in ACTIVE_STATUSES for j in self.jobs.values()):
+                raise ImportBusyError("An import job is already running or queued")
+
+            jid = uuid.uuid4().hex
+            job = ImportJob(
+                id=jid,
+                source=source,
+                dest=dest,
+                status="queued",
+                created_at=time.time(),
+                ignore_existing=bool(ignore_existing),
+            )
+            self.jobs[jid] = job
+
+        try:
+            self._save_to_disk()
+        except Exception:
+            with self._lock:
+                self.jobs.pop(jid, None)
+            raise
+
+        return job
 
 
 _PROGRESS_RE = re.compile(r"(?P<pct>\d+)%")

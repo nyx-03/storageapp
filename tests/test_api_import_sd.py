@@ -32,7 +32,19 @@ def test_import_sd_rejects_unknown_source(monkeypatch, tmp_path):
 
 def test_import_sd_rejects_when_running(monkeypatch, tmp_path):
     main = _load_app(monkeypatch, tmp_path)
-    monkeypatch.setattr(main.import_store, "has_running", lambda: True)
+    allowed = tmp_path / "sd"
+    allowed.mkdir()
+
+    monkeypatch.setattr(main, "find_media_sources", lambda: [
+        {"path": str(allowed), "recommended_path": str(allowed)},
+    ])
+
+    def boom(*_args, **_kwargs):
+        raise main.ImportBusyError("busy")
+
+    monkeypatch.setattr(main.import_store, "create_if_available", boom)
     client = TestClient(main.app)
-    r = client.post("/api/import-sd", json={"source_path": str(tmp_path), "ignore_existing": False})
+    r = client.post("/api/disks/active", json={"dev": "/dev/sda1"})
+    assert r.status_code == 200
+    r = client.post("/api/import-sd", json={"source_path": str(allowed), "ignore_existing": False})
     assert r.status_code == 409
