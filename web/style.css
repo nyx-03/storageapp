@@ -243,6 +243,29 @@ p { margin: 0; }
   align-items: center;
 }
 
+.transfer {
+  display: grid;
+  gap: 12px;
+}
+.transfer__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.transfer__label {
+  font-size: 13px;
+  color: var(--muted);
+  min-width: 90px;
+}
+.transfer__divider {
+  text-transform: uppercase;
+  letter-spacing: 1.6px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  margin: 2px 0;
+}
+
 .input,
 .select {
   appearance: none;
@@ -362,4 +385,6 @@ code {
   .grid, .grid--wide { grid-template-columns: 1fr; }
   .row { grid-template-columns: 1fr; }
   .actions { justify-items: start; }
+  .transfer__row { grid-template-columns: 1fr; align-items: start; }
+  .transfer__label { min-width: auto; }
 }

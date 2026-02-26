@@ -12,3 +12,7 @@ class DiskProvider(ABC):
     def ensure_writable(self, dev: str, fstype: str | None) -> Tuple[Optional[str], bool]:
         # Par défaut : ne fait rien (utile pour le provider mock)
         return None, False
+
+    def ensure_mounted(self, dev: str, fstype: str | None, readonly: bool = False) -> Tuple[Optional[str], bool]:
+        # Par défaut : ne fait rien (utile pour le provider mock)
+        return None, False

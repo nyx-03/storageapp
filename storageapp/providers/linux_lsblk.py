@@ -77,6 +77,8 @@ def _ensure_mounted_and_writable(dev: str, fstype: str | None) -> tuple[str | No
     if mp:
         return mp, _test_writable(mp)
     return None, False
+
+
 def _run(cmd: list[str]) -> str:
     try:
         return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
@@ -97,6 +99,39 @@ def _test_writable(mountpoint: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _test_readable(mountpoint: str) -> bool:
+    try:
+        next(Path(mountpoint).iterdir(), None)
+        return True
+    except Exception:
+        return False
+
+
+def _ensure_mounted(dev: str, fstype: str | None, readonly: bool = False) -> tuple[str | None, bool]:
+    fs = (fstype or "").lower()
+    opts = []
+
+    if readonly:
+        opts.append("ro")
+
+    if fs in {"vfat", "exfat", "ntfs"}:
+        uid = os.getuid()
+        gid = os.getgid()
+        opts.append(f"uid={uid},gid={gid},umask=0022")
+
+    options = ",".join(opts) if opts else None
+
+    try:
+        mp = _udisks_mount(dev, options=options)
+    except Exception:
+        try:
+            mp = _udisks_mount(dev)
+        except Exception:
+            return None, False
+
+    return mp, _test_readable(mp)
 
 
 class LinuxLsblkProvider(DiskProvider):
@@ -149,3 +184,6 @@ class LinuxLsblkProvider(DiskProvider):
 
     def ensure_writable(self, dev: str, fstype: str | None) -> tuple[str | None, bool]:
         return _ensure_mounted_and_writable(dev, fstype)
+
+    def ensure_mounted(self, dev: str, fstype: str | None, readonly: bool = False) -> tuple[str | None, bool]:
+        return _ensure_mounted(dev, fstype, readonly=readonly)

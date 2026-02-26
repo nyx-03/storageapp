@@ -40,3 +40,9 @@ class MockDiskProvider(DiskProvider):
         if not d:
             return None, False
         return d.mountpoint, True
+
+    def ensure_mounted(self, dev: str, fstype: str | None, readonly: bool = False):
+        d = next((x for x in self.list_disks() if x.dev == dev), None)
+        if not d:
+            return None, False
+        return d.mountpoint, True

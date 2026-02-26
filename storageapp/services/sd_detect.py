@@ -41,6 +41,15 @@ def _candidate_mounts(root: Path) -> List[Path]:
     return mounts or uniq
 
 
+def recommended_path_for(base: Path) -> tuple[str, List[str]]:
+    found = []
+    for sig in SIGNATURE_DIRS_PRIORITY:
+        if (base / sig).is_dir():
+            found.append(sig)
+    recommended = str(base / found[0]) if found else str(base)
+    return recommended, found
+
+
 def find_media_sources(max_depth: int = 3) -> List[Dict[str, Any]]:
     """
     Retourne des chemins de supports montés (USB y compris),
@@ -52,14 +61,7 @@ def find_media_sources(max_depth: int = 3) -> List[Dict[str, Any]]:
             continue
 
         for base in _candidate_mounts(root):
-            found = []
-            for sig in SIGNATURE_DIRS_PRIORITY:
-                if (base / sig).is_dir():
-                    found.append(sig)
-
-            # Chemin recommandé : signature prioritaire, sinon racine du support
-            recommended = str(base / found[0]) if found else str(base)
-
+            recommended, found = recommended_path_for(base)
             sources.append({
                 "path": str(base),
                 "signatures": found,

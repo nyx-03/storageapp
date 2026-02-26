@@ -19,7 +19,7 @@ from storageapp.providers.linux_lsblk import LinuxLsblkProvider
 from storageapp.services.state import ActiveDiskState
 from storageapp.services.disks import DiskService
 from storageapp.services.import_jobs import ImportJobStore, run_rsync_job, job_to_dict, ImportBusyError
-from storageapp.services.sd_detect import find_media_sources
+from storageapp.services.sd_detect import find_media_sources, recommended_path_for
 
 from fastapi import UploadFile, File
 from typing import List
@@ -122,6 +122,37 @@ def api_sd_sources():
     return {"sources": find_media_sources()}
 
 
+@app.get("/api/sources")
+def api_sources():
+    """Liste des supports USB utilisables comme source de copie."""
+    active_dev = state.get_active_dev()
+    sources = []
+    for d in service.list_disks():
+        if d.dev == active_dev:
+            continue
+
+        mp = d.mountpoint
+        ok = True
+        if not mp:
+            mp, ok = provider.ensure_mounted(d.dev, d.fstype, readonly=True)
+
+        if not mp or not ok:
+            continue
+
+        recommended, sigs = recommended_path_for(Path(mp))
+        sources.append({
+            "dev": d.dev,
+            "label": d.label,
+            "fstype": d.fstype,
+            "size": d.size,
+            "mountpoint": mp,
+            "recommended_path": recommended,
+            "signatures": sigs,
+        })
+
+    return {"sources": sources}
+
+
 @app.post("/api/import-sd")
 def api_import_sd(req: ImportRequest, background: BackgroundTasks):
     """Lance un import rsync depuis la carte SD vers le disque actif."""
@@ -138,6 +169,19 @@ def api_import_sd(req: ImportRequest, background: BackgroundTasks):
             allowed.add(str(Path(s["path"]).resolve()))
         if s.get("recommended_path"):
             allowed.add(str(Path(s["recommended_path"]).resolve()))
+
+    for d in service.list_disks():
+        if d.dev == active.dev:
+            continue
+        mp = d.mountpoint
+        ok = True
+        if not mp:
+            mp, ok = provider.ensure_mounted(d.dev, d.fstype, readonly=True)
+        if not mp or not ok:
+            continue
+        allowed.add(str(Path(mp).resolve()))
+        recommended, _ = recommended_path_for(Path(mp))
+        allowed.add(str(Path(recommended).resolve()))
 
     src = Path(req.source_path).resolve()
     if str(src) not in allowed:
