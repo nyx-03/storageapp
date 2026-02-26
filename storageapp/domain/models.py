@@ -1,0 +1,16 @@
+from __future__ import annotations
+from pydantic import BaseModel
+from typing import Optional
+
+
+class Disk(BaseModel):
+    dev: str                  # ex: /dev/sda1
+    label: str
+    fstype: Optional[str] = None
+    size: Optional[str] = None
+    mountpoint: Optional[str] = None
+    tran: Optional[str] = None       # usb, mmc, sata...
+    rm: Optional[bool] = None        # removable
+    supported: bool = False
+    writable: bool = False
+    is_system: bool = False
