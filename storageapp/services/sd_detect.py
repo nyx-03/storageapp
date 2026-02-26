@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import List, Dict, Any
+import os
 
 # On cherche des montages probables (Pi OS + udisks)
 CANDIDATE_ROOTS = [
@@ -18,45 +19,46 @@ SIGNATURE_DIRS_PRIORITY = [
 ]
 
 
+def _candidate_mounts(root: Path) -> List[Path]:
+    candidates: List[Path] = []
+    for base in root.iterdir():
+        if base.is_dir():
+            candidates.append(base)
+    for base in root.glob("*/*"):
+        if base.is_dir():
+            candidates.append(base)
+
+    seen = set()
+    uniq: List[Path] = []
+    for base in candidates:
+        b = str(base)
+        if b in seen:
+            continue
+        seen.add(b)
+        uniq.append(base)
+
+    mounts = [p for p in uniq if os.path.ismount(p)]
+    return mounts or uniq
+
+
 def find_media_sources(max_depth: int = 3) -> List[Dict[str, Any]]:
     """
-    Retourne des chemins "probables" de cartes SD / supports amovibles,
-    en se basant sur la présence de dossiers signatures.
+    Retourne des chemins de supports montés (USB y compris),
+    et si possible un chemin recommandé basé sur des signatures connues.
     """
     sources = []
     for root in CANDIDATE_ROOTS:
         if not root.exists():
             continue
 
-        # /media/<user>/<label>
-        # Certaines cartes ont un sous-dossier avant DCIM/INSTA360, on regarde donc aussi un niveau plus bas.
-        candidates = []
-        for base in root.glob("*/*"):
-            if not base.is_dir():
-                continue
-            candidates.append(base)
-            # Un niveau plus bas (rapide)
-            for child in base.iterdir():
-                if child.is_dir():
-                    candidates.append(child)
-
-        seen = set()
-        for base in candidates:
-            b = str(base)
-            if b in seen:
-                continue
-            seen.add(b)
-
+        for base in _candidate_mounts(root):
             found = []
             for sig in SIGNATURE_DIRS_PRIORITY:
                 if (base / sig).is_dir():
                     found.append(sig)
 
-            if not found:
-                continue
-
-            # Chemin recommandé : on prend la signature la plus prioritaire
-            recommended = str(base / found[0])
+            # Chemin recommandé : signature prioritaire, sinon racine du support
+            recommended = str(base / found[0]) if found else str(base)
 
             sources.append({
                 "path": str(base),

@@ -30,16 +30,9 @@ Variables d’environnement
 - `STORAGEAPP_ENV`: `dev` (par défaut) ou `pi`
 - `STORAGEAPP_STATE_FILE`: chemin du fichier d’état (défaut `./.state/state.json`)
 - `STORAGEAPP_JOBS_FILE`: chemin du fichier de jobs d’import (défaut `/var/lib/storageapp/import_jobs.json`)
-- `STORAGEAPP_API_KEY`: clé API partagée (si définie, en‑tête requis `X-API-Key`)
 - `STORAGEAPP_MAX_UPLOAD_MB`: taille max d’upload (défaut `4096`)
  
 En production sur Raspberry Pi, définir `STORAGEAPP_ENV=pi` pour activer la détection réelle des disques USB.
-
-Authentification (LAN)
-----------------------
-Si `STORAGEAPP_API_KEY` est définie, tous les endpoints `/api/*` exigent
-`X-API-Key`. La UI web propose un champ pour enregistrer la clé en local
-(`localStorage`).
 
 Sudoers (arrêt du Pi)
 ---------------------

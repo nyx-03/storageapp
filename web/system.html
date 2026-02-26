@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StorageApp — Raspberry</title>
+  <link rel="stylesheet" href="/web/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">S</div>
+      <div>
+        <h1>StorageApp</h1>
+        <p>Infos système Raspberry</p>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <a class="nav__link" href="/">Transferts</a>
+      <a class="nav__link nav__link--active" href="/system">Raspberry</a>
+    </nav>
+
+    <div class="status" id="sysStatus">
+      <span class="dot" id="sysStatusDot"></span>
+      <span id="sysStatusText">Chargement…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Raspberry Pi</div>
+        <h2>État, ressources et accès réseau.</h2>
+        <p class="muted">Ces informations sont lues en local sur le Pi.</p>
+      </div>
+      <div class="hero__panel">
+        <div class="hero__meta">
+          <button class="btn btn--ghost" id="sysRefreshBtn">Rafraîchir</button>
+          <span class="pill" id="sysUpdatedAt">—</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid grid--wide">
+      <div class="card">
+        <div class="card__head">
+          <h3>Identité</h3>
+        </div>
+        <div class="kv">
+          <div><span>Nom</span><strong id="sysHostname">—</strong></div>
+          <div><span>IP LAN</span><strong id="sysIp">—</strong></div>
+          <div><span>OS</span><strong id="sysOs">—</strong></div>
+          <div><span>Noyau</span><strong id="sysKernel">—</strong></div>
+          <div><span>Uptime</span><strong id="sysUptime">—</strong></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <h3>Ressources</h3>
+        </div>
+        <div class="kv">
+          <div><span>Temp. CPU</span><strong id="sysTemp">—</strong></div>
+          <div><span>Mémoire</span><strong id="sysMem">—</strong></div>
+          <div><span>Disque</span><strong id="sysDisk">—</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card__head">
+          <h3>Actions</h3>
+        </div>
+        <p class="muted">Éteins proprement le Raspberry Pi avant de débrancher l’alimentation.</p>
+        <div class="form-row">
+          <button class="btn btn--danger" id="shutdownBtn">Éteindre le Raspberry Pi</button>
+        </div>
+        <div class="muted" id="shutdownStatus"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span class="muted">StorageApp — Page système</span>
+  </footer>
+
+  <script src="/web/system.js"></script>
+</body>
+</html>

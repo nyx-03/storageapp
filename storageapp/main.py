@@ -3,13 +3,17 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi import BackgroundTasks
 from pathlib import Path
 import subprocess
 import logging
+import platform
+import socket
+import shutil
+import time
 
-from storageapp.settings import APP_ENV, STATE_FILE, API_KEY, MAX_UPLOAD_MB
+from storageapp.settings import APP_ENV, STATE_FILE, MAX_UPLOAD_MB
 from storageapp.providers.mock import MockDiskProvider
 from storageapp.providers.linux_lsblk import LinuxLsblkProvider
 from storageapp.services.state import ActiveDiskState
@@ -37,19 +41,16 @@ app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
 def home():
     return FileResponse(str(WEB_DIR / "index.html"))
 
+
+@app.get("/system")
+def system_page():
+    return FileResponse(str(WEB_DIR / "system.html"))
+
 provider = LinuxLsblkProvider() if APP_ENV == "pi" else MockDiskProvider()
 state = ActiveDiskState(STATE_FILE)
 service = DiskService(provider=provider, state=state)
 
 import_store = ImportJobStore()
-
-
-@app.middleware("http")
-async def api_key_guard(request: Request, call_next):
-    if API_KEY and request.url.path.startswith("/api/"):
-        if request.headers.get("X-API-Key") != API_KEY:
-            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-    return await call_next(request)
 
 
 class SetActiveRequest(BaseModel):
@@ -209,3 +210,87 @@ def api_system_shutdown():
         return {"ok": True, "message": "Extinction en cours…"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Shutdown failed: {e}")
+
+
+def _read_first_line(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8").strip().splitlines()[0]
+    except Exception:
+        return None
+
+
+def _cpu_temp_c() -> float | None:
+    raw = _read_first_line(Path("/sys/class/thermal/thermal_zone0/temp"))
+    if not raw:
+        return None
+    try:
+        return round(float(raw) / 1000.0, 1)
+    except Exception:
+        return None
+
+
+def _uptime_seconds() -> int | None:
+    raw = _read_first_line(Path("/proc/uptime"))
+    if not raw:
+        return None
+    try:
+        return int(float(raw.split()[0]))
+    except Exception:
+        return None
+
+
+def _meminfo() -> dict:
+    mem = {}
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            if ":" not in line:
+                continue
+            key, val = line.split(":", 1)
+            val = val.strip().split()[0]
+            mem[key] = int(val) * 1024
+    except Exception:
+        return {}
+    return mem
+
+
+def _primary_ip() -> str | None:
+    try:
+        proc = subprocess.run(["hostname", "-I"], capture_output=True, text=True)
+        if proc.returncode == 0:
+            for part in proc.stdout.split():
+                if part and not part.startswith("127."):
+                    return part
+    except Exception:
+        pass
+    try:
+        ip = socket.gethostbyname(socket.gethostname())
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        return None
+    return None
+
+
+@app.get("/api/system/info")
+def api_system_info():
+    uptime = _uptime_seconds()
+    mem = _meminfo()
+    disk = shutil.disk_usage("/")
+    return {
+        "hostname": socket.gethostname(),
+        "os": platform.platform(),
+        "kernel": platform.release(),
+        "uptime_seconds": uptime,
+        "boot_time": int(time.time() - uptime) if uptime is not None else None,
+        "ip": _primary_ip(),
+        "cpu_temp_c": _cpu_temp_c(),
+        "memory": {
+            "total": mem.get("MemTotal"),
+            "available": mem.get("MemAvailable"),
+        },
+        "disk": {
+            "total": disk.total,
+            "used": disk.used,
+            "free": disk.free,
+        },
+    }

@@ -14,7 +14,6 @@ def _env_int(name: str, default: int) -> int:
 
 
 APP_ENV = os.getenv("STORAGEAPP_ENV", "dev")  # dev | pi
-API_KEY = os.getenv("STORAGEAPP_API_KEY")
 MAX_UPLOAD_MB = _env_int("STORAGEAPP_MAX_UPLOAD_MB", 4096)
 
 # Où persister l’état

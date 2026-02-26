@@ -21,20 +21,10 @@ const sdIgnoreExisting = $("#sdIgnoreExisting");
 const importJobsEl = $("#importJobs");
 const shutdownBtn = $("#shutdownBtn");
 const shutdownStatus = $("#shutdownStatus");
-const apiKeyInput = $("#apiKeyInput");
-const apiKeySaveBtn = $("#apiKeySaveBtn");
-const apiKeyStatus = $("#apiKeyStatus");
 
 let hasActiveDisk = false;
 let hasRunningImport = false;
-let apiKey = localStorage.getItem("storageapp_api_key") || "";
-
-if (apiKeyInput) {
-  apiKeyInput.value = apiKey;
-}
-
 apiBaseLabel.textContent = API_BASE ? `API: ${API_BASE}` : `API: (same origin)`;
-if (apiKeyStatus && apiKey) apiKeyStatus.textContent = "Clé API chargée.";
 
 function setStatus(kind, text) {
   // kind: ok | warn | danger
@@ -152,19 +142,15 @@ function row(disk, activeDev) {
 }
 
 async function apiGet(path) {
-  const headers = { "Accept": "application/json" };
-  if (apiKey) headers["X-API-Key"] = apiKey;
-  const res = await fetch(`${API_BASE}${path}`, { headers });
+  const res = await fetch(`${API_BASE}${path}`, { headers: { "Accept": "application/json" } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
 
 async function apiPost(path, body) {
-  const headers = { "Content-Type": "application/json", "Accept": "application/json" };
-  if (apiKey) headers["X-API-Key"] = apiKey;
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -214,11 +200,8 @@ async function refresh() {
 }
 
 async function apiPostForm(path, formData) {
-  const headers = {};
-  if (apiKey) headers["X-API-Key"] = apiKey;
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers,
     body: formData,
   });
   const data = await res.json().catch(() => ({}));
@@ -419,17 +402,6 @@ shutdownBtn?.addEventListener("click", async () => {
     console.error(e);
     setShutdownStatus(`❌ ${e?.message || e}`);
     shutdownBtn.disabled = false;
-  }
-});
-
-apiKeySaveBtn?.addEventListener("click", () => {
-  apiKey = (apiKeyInput?.value || "").trim();
-  if (apiKey) {
-    localStorage.setItem("storageapp_api_key", apiKey);
-    if (apiKeyStatus) apiKeyStatus.textContent = "Clé API enregistrée.";
-  } else {
-    localStorage.removeItem("storageapp_api_key");
-    if (apiKeyStatus) apiKeyStatus.textContent = "Clé API supprimée.";
   }
 });
 

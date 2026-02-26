@@ -7,14 +7,19 @@
   <link rel="stylesheet" href="/web/style.css" />
 </head>
 <body>
-  <header class="header">
+  <header class="topbar">
     <div class="brand">
       <div class="logo">S</div>
       <div>
         <h1>StorageApp</h1>
-        <p>Gestion des disques USB</p>
+        <p>Transferts vers USB · LAN</p>
       </div>
     </div>
+
+    <nav class="nav">
+      <a class="nav__link nav__link--active" href="/">Transferts</a>
+      <a class="nav__link" href="/system">Raspberry</a>
+    </nav>
 
     <div class="status" id="status">
       <span class="dot" id="statusDot"></span>
@@ -22,92 +27,87 @@
     </div>
   </header>
 
-  <main class="container">
-    <section class="card">
-      <div class="card__head">
-        <h2>Disques disponibles</h2>
-        <button class="btn btn--ghost" id="refreshBtn">Rafraîchir</button>
+  <main class="layout">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Transferts</div>
+        <h2>Envoie des fichiers et importe des cartes SD en un clic.</h2>
+        <p class="muted">L’app reste locale sur le Raspberry Pi. Utilise l’adresse IP si le DNS local ne répond pas.</p>
       </div>
-
-      <div class="hint">
-        Astuce : si <code>storage.local</code> ne marche pas sur ton appareil, utilise l’adresse IP (ex: <code>10.42.0.1</code>).
-      </div>
-
-      <div class="auth">
-        <div class="auth__label">Clé API (X-API-Key)</div>
-        <input id="apiKeyInput" class="input" type="password" placeholder="Saisis la clé API si activée" />
-        <button class="btn btn--ghost" id="apiKeySaveBtn">Enregistrer</button>
-        <div class="muted" id="apiKeyStatus"></div>
-      </div>
-
-      <div class="upload">
-  <h3>Envoyer des fichiers</h3>
-  <p class="muted">Les fichiers seront enregistrés sur le disque actif.</p>
-
-  <div class="upload__row">
-    <input id="fileInput" type="file" multiple />
-    <button class="btn btn--primary" id="uploadBtn">Envoyer</button>
-  </div>
-
-  <div class="muted" id="uploadStatus"></div>
-</div>
-
-<div class="import">
-  <h3>Importer depuis une carte SD</h3>
-  <p class="muted">Détecte automatiquement les cartes SD (Insta360 / appareil photo) et copie les fichiers vers le disque actif.</p>
-
-  <div class="import__row">
-    <select id="sdSourceSelect" class="select">
-      <option value="">— Sélectionne une source SD —</option>
-    </select>
-    <button class="btn btn--primary" id="importSdBtn">Importer</button>
-  </div>
-
-  <label class="checkbox">
-    <input type="checkbox" id="sdIgnoreExisting" />
-    Ignorer les fichiers déjà copiés
-  </label>
-
-  <div class="muted" id="sdStatus"></div>
-
-  <div class="import__jobs" id="importJobs"></div>
-</div>
-
-<div class="system">
-  <h3>Système</h3>
-  <p class="muted">Arrête proprement le Raspberry Pi avant de débrancher l’alimentation.</p>
-
-  <div class="system__row">
-    <button class="btn btn--danger" id="shutdownBtn">Éteindre le Raspberry Pi</button>
-  </div>
-
-  <div class="muted" id="shutdownStatus"></div>
-</div>
-
-      <div class="list" id="diskList">
-        <!-- injecté par JS -->
-      </div>
-
-      <div class="empty" id="emptyState" hidden>
-        <p>Aucun disque USB détecté.</p>
-        <p class="muted">Branche une clé USB ou un disque dur, puis clique sur “Rafraîchir”.</p>
+      <div class="hero__panel">
+        <div class="hint">
+          Astuce : si <code>storage.local</code> ne marche pas sur ton appareil, utilise l’adresse IP (ex: <code>10.42.0.1</code>).
+        </div>
+        <div class="hero__meta">
+          <span class="pill" id="apiBaseLabel"></span>
+          <button class="btn btn--ghost" id="refreshBtn">Rafraîchir</button>
+        </div>
       </div>
     </section>
 
-    <section class="card">
-      <div class="card__head">
-        <h2>Disque actif</h2>
+    <section class="grid">
+      <div class="card">
+        <div class="card__head">
+          <h3>Disques disponibles</h3>
+        </div>
+
+        <div class="list" id="diskList">
+          <!-- injecté par JS -->
+        </div>
+
+        <div class="empty" id="emptyState" hidden>
+          <p>Aucun disque USB détecté.</p>
+          <p class="muted">Branche une clé USB ou un disque dur, puis clique sur “Rafraîchir”.</p>
+        </div>
       </div>
-      <div id="activeBox" class="active">
-        <p class="muted">Aucun disque actif pour le moment.</p>
+
+      <div class="card">
+        <div class="card__head">
+          <h3>Disque actif</h3>
+        </div>
+        <div id="activeBox" class="active">
+          <p class="muted">Aucun disque actif pour le moment.</p>
+        </div>
       </div>
     </section>
 
-    <footer class="footer">
-      <span class="muted">StorageApp — UI minimal</span>
-      <span class="muted" id="apiBaseLabel"></span>
-    </footer>
+    <section class="grid grid--wide">
+      <div class="card">
+        <div class="card__head">
+          <h3>Envoyer des fichiers</h3>
+        </div>
+        <p class="muted">Les fichiers sont enregistrés sur le disque actif.</p>
+        <div class="form-row">
+          <input id="fileInput" class="input" type="file" multiple />
+          <button class="btn btn--primary" id="uploadBtn">Envoyer</button>
+        </div>
+        <div class="muted" id="uploadStatus"></div>
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <h3>Importer depuis une carte SD</h3>
+        </div>
+        <p class="muted">Détecte les supports USB (adaptateur SD) et copie les fichiers vers le disque actif.</p>
+        <div class="form-row">
+          <select id="sdSourceSelect" class="select">
+            <option value="">— Sélectionne une source SD —</option>
+          </select>
+          <button class="btn btn--primary" id="importSdBtn">Importer</button>
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" id="sdIgnoreExisting" />
+          Ignorer les fichiers déjà copiés
+        </label>
+        <div class="muted" id="sdStatus"></div>
+        <div class="import__jobs" id="importJobs"></div>
+      </div>
+    </section>
   </main>
+
+  <footer class="footer">
+    <span class="muted">StorageApp — Transferts locaux</span>
+  </footer>
 
   <script src="/web/app.js"></script>
 </body>
