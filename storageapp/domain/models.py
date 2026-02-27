@@ -14,3 +14,5 @@ class Disk(BaseModel):
     supported: bool = False
     writable: bool = False
     is_system: bool = False
+    parent_dev: Optional[str] = None
+    is_usb: Optional[bool] = None
