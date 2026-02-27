@@ -129,6 +129,7 @@ def api_sources():
     sources = []
     for d in service.list_disks():
         if d.dev == active_dev:
+            logger.info("source skip dev=%s label=%s reason=active", d.dev, d.label)
             continue
 
         mp = d.mountpoint
@@ -137,9 +138,17 @@ def api_sources():
             mp, ok = provider.ensure_mounted(d.dev, d.fstype, readonly=True)
 
         if not mp or not ok:
+            logger.info(
+                "source skip dev=%s label=%s readonly=%s reason=%s",
+                d.dev,
+                d.label,
+                True,
+                "mount_failed" if not mp else "not_readable",
+            )
             continue
 
         recommended, sigs = recommended_path_for(Path(mp))
+        logger.info("source ok dev=%s label=%s readonly=%s mp=%s", d.dev, d.label, True, mp)
         sources.append({
             "dev": d.dev,
             "label": d.label,

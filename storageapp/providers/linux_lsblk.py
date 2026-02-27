@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import logging
+import re
 from typing import List, Optional
 from pathlib import Path
 import pwd
@@ -20,10 +21,18 @@ def _uid_gid_for_user(username: str) -> tuple[int, int]:
 
 def _parse_mountpoint_from_udisksctl(output: str) -> str:
     # Exemple: "Mounted /dev/sda1 at /media/storageapp/E0C9-6E4A."
-    for token in output.split():
-        if token.startswith("/media/"):
-            return token.rstrip(".")
-    raise RuntimeError(f"Mountpoint not found in: {output}")
+    # Exemple: "Mounted /dev/sda1 at /run/media/storageapp/MYLABEL."
+    # Exemple: "Mounted /dev/sda1 at \"/run/media/storageapp/My Drive\"."
+    mount_re = re.compile(r"\bat\s+(?P<path>\"[^\"]+\"|'[^']+'|/.*?)(?:\.\s*|$)")
+    m = mount_re.search(output)
+    if not m:
+        raise RuntimeError(f"Mountpoint not found in: {output}")
+    path = m.group("path").strip().strip("'\"").rstrip(".").strip()
+    if not path.startswith("/"):
+        raise RuntimeError(f"Mountpoint not absolute in: {output}")
+    if not (path.startswith("/media/") or path.startswith("/run/media/")):
+        logger.warning("Mountpoint outside expected roots: %s", path)
+    return path
 
 
 def _udisks_unmount(dev: str) -> None:
@@ -125,10 +134,12 @@ def _ensure_mounted(dev: str, fstype: str | None, readonly: bool = False) -> tup
 
     try:
         mp = _udisks_mount(dev, options=options)
-    except Exception:
+    except Exception as e:
+        logger.warning("udisksctl mount failed (%s) for %s (readonly=%s)", e, dev, readonly)
         try:
             mp = _udisks_mount(dev)
-        except Exception:
+        except Exception as e2:
+            logger.warning("udisksctl mount fallback failed (%s) for %s (readonly=%s)", e2, dev, readonly)
             return None, False
 
     return mp, _test_readable(mp)
