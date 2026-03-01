@@ -404,6 +404,10 @@ code {
   z-index: 20;
 }
 
+.file-preview-overlay[hidden] {
+  display: none !important;
+}
+
 .file-preview {
   width: min(980px, 100%);
   border: 1px solid rgba(255,255,255,0.08);
@@ -507,7 +511,7 @@ code {
     text-align: left;
   }
   .file-preview__media {
-    max-height: 40vh;
+    max-height: 32vh;
     border-radius: 10px;
   }
   .file-preview {

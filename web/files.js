@@ -20,6 +20,10 @@ const previewClose = $("#previewClose");
 let currentPath = "";
 let currentEntries = [];
 
+if (preview) {
+  preview.hidden = true;
+}
+
 function setStatus(kind, text) {
   statusText.textContent = text;
   statusDot.style.background =
@@ -158,6 +162,7 @@ async function loadFiles() {
   try {
     setStatus("warn", "Chargement…");
     filesError.textContent = "";
+    hidePreview();
     const res = await fetch(`/api/files?path=${encodeURIComponent(currentPath)}`, {
       headers: { "Accept": "application/json" },
     });
