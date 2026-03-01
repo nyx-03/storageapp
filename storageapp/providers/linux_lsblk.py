@@ -67,11 +67,21 @@ def _ensure_mounted_and_writable(dev: str, fstype: str | None) -> tuple[str | No
 
         try:
             mp = _udisks_mount(dev, options=opts)
-        except Exception:
+        except Exception as e:
+            if _is_already_mounted_error(e):
+                mp = _lsblk_mountpoint(dev) or _mountpoint_from_error(e)
+                if mp:
+                    logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
+                    return mp, _test_writable(mp)
             # fallback: tentative sans options
             try:
                 mp = _udisks_mount(dev)
-            except Exception:
+            except Exception as e2:
+                if _is_already_mounted_error(e2):
+                    mp = _lsblk_mountpoint(dev) or _mountpoint_from_error(e2)
+                    if mp:
+                        logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
+                        return mp, _test_writable(mp)
                 return None, False
 
         return mp, _test_writable(mp)
@@ -81,7 +91,12 @@ def _ensure_mounted_and_writable(dev: str, fstype: str | None) -> tuple[str | No
     # On tente juste de monter si besoin, puis test writable.
     try:
         mp = _udisks_mount(dev)
-    except Exception:
+    except Exception as e:
+        if _is_already_mounted_error(e):
+            mp = _lsblk_mountpoint(dev) or _mountpoint_from_error(e)
+            if mp:
+                logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
+                return mp, _test_writable(mp)
         mp = None
 
     if mp:
@@ -92,6 +107,14 @@ def _ensure_mounted_and_writable(dev: str, fstype: str | None) -> tuple[str | No
 def _run(cmd: list[str]) -> str:
     try:
         return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            "Command failed: %s stdout=%r stderr=%r",
+            cmd,
+            e.stdout,
+            e.stderr,
+        )
+        raise
     except Exception:
         logger.exception("Command failed: %s", cmd)
         raise
@@ -117,6 +140,47 @@ def _test_readable(mountpoint: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _error_text(err: Exception) -> str:
+    text = []
+    if isinstance(err, subprocess.CalledProcessError):
+        if err.stdout:
+            text.append(str(err.stdout))
+        if err.stderr:
+            text.append(str(err.stderr))
+    text.append(str(err))
+    return "\n".join([t for t in text if t])
+
+
+def _is_already_mounted_error(err: Exception) -> bool:
+    msg = _error_text(err)
+    return "AlreadyMounted" in msg or "already mounted" in msg
+
+
+def _mountpoint_from_error(err: Exception) -> str | None:
+    msg = _error_text(err)
+    m = re.search(r"[`'\"](?P<path>/[^`'\"]+)[`'\"]", msg)
+    if m:
+        return m.group("path")
+    return None
+
+
+def _lsblk_mountpoint(dev: str) -> str | None:
+    try:
+        proc = subprocess.run(
+            ["lsblk", "-no", "MOUNTPOINT", dev],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            logger.warning("lsblk mountpoint failed for %s: %s", dev, proc.stderr)
+            return None
+        out = (proc.stdout or "").strip()
+        return out or None
+    except Exception as e:
+        logger.warning("lsblk mountpoint exception for %s: %s", dev, e)
+        return None
 
 
 def _belongs_to_disk(part_name: str, disk_name: str) -> bool:
@@ -244,10 +308,20 @@ def _ensure_mounted(dev: str, fstype: str | None, readonly: bool = False) -> tup
     try:
         mp = _udisks_mount(dev, options=options)
     except Exception as e:
+        if _is_already_mounted_error(e):
+            mp = _lsblk_mountpoint(dev) or _mountpoint_from_error(e)
+            if mp:
+                logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
+                return mp, _test_readable(mp)
         logger.warning("udisksctl mount failed (%s) for %s (readonly=%s)", e, dev, readonly)
         try:
             mp = _udisks_mount(dev)
         except Exception as e2:
+            if _is_already_mounted_error(e2):
+                mp = _lsblk_mountpoint(dev) or _mountpoint_from_error(e2)
+                if mp:
+                    logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
+                    return mp, _test_readable(mp)
             logger.warning("udisksctl mount fallback failed (%s) for %s (readonly=%s)", e2, dev, readonly)
             return None, False
 

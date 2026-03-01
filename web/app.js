@@ -9,6 +9,9 @@ const statusText = $("#statusText");
 const refreshBtn = $("#refreshBtn");
 const apiBaseLabel = $("#apiBaseLabel");
 
+const diskList = $("#diskList");
+const emptyState = $("#emptyState");
+
 const destSelect = $("#destSelect");
 const destSetBtn = $("#destSetBtn");
 const destInfo = $("#destInfo");
@@ -92,6 +95,84 @@ function describeDisk(d) {
   return `${label} · ${size} · ${fs}`;
 }
 
+function badge(text, cls) {
+  const el = document.createElement("span");
+  el.className = `badge ${cls || ""}`.trim();
+  el.textContent = text;
+  return el;
+}
+
+function renderDiskList() {
+  if (!diskList) return;
+  diskList.innerHTML = "";
+
+  const list = disksCache || [];
+  if (!list.length) {
+    if (emptyState) emptyState.hidden = false;
+    return;
+  }
+
+  if (emptyState) emptyState.hidden = true;
+
+  for (const d of list) {
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const left = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "row__title";
+
+    const label = document.createElement("strong");
+    label.textContent = d.label || d.dev;
+    title.appendChild(label);
+    title.appendChild(badge(d.dev, ""));
+    if (d.dev === activeDev) title.appendChild(badge("ACTIF", "badge--active"));
+
+    if (!d.supported) title.appendChild(badge("FS non supporté", "badge--danger"));
+    else title.appendChild(badge("Supporté", "badge--ok"));
+
+    if (d.mountpoint) title.appendChild(badge("Monté", "badge--ok"));
+    else title.appendChild(badge("Non monté", "badge--warn"));
+
+    if (d.writable) title.appendChild(badge("Écriture OK", "badge--ok"));
+    else title.appendChild(badge("Écriture KO", "badge--warn"));
+
+    left.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.innerHTML = `
+      <div><strong>Type</strong> ${d.rm ? "Amovible" : "Fixe"} · <strong>Transport</strong> ${d.tran || "?"}</div>
+      <div><strong>FS</strong> ${d.fstype || "?"} · <strong>Taille</strong> ${d.size || "?"}</div>
+      <div><strong>Chemin</strong> <code>${d.mountpoint || "—"}</code></div>
+    `;
+    left.appendChild(meta);
+
+    const right = document.createElement("div");
+    right.className = "actions";
+    const btn = document.createElement("button");
+    btn.className = "btn btn--primary";
+    btn.textContent = d.dev === activeDev ? "Disque actif" : "Utiliser ce disque";
+    btn.disabled = !d.supported || d.dev === activeDev;
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await setActive(d.dev);
+        await loadDisks();
+      } catch (e) {
+        console.error(e);
+        alert(`Impossible de définir ce disque actif: ${e.message || e}`);
+        btn.disabled = false;
+      }
+    });
+    right.appendChild(btn);
+
+    row.appendChild(left);
+    row.appendChild(right);
+    diskList.appendChild(row);
+  }
+}
+
 function renderDestinations() {
   if (!destSelect) return;
   destSelect.innerHTML = "";
@@ -108,6 +189,11 @@ function renderDestinations() {
     return;
   }
 
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "— Choisir un disque —";
+  destSelect.appendChild(placeholder);
+
   for (const d of supported) {
     const opt = document.createElement("option");
     opt.value = d.dev;
@@ -118,16 +204,10 @@ function renderDestinations() {
     destSelect.appendChild(opt);
   }
 
-  if (activeDev && supported.some(d => d.dev === activeDev)) {
-    destSelect.value = activeDev;
-  } else {
-    destSelect.selectedIndex = 0;
-  }
-
-  const current = supported.find(d => d.dev === destSelect.value) || supported[0];
   if (destInfo) {
+    const current = supported.find(d => d.dev === activeDev);
     destInfo.textContent = current
-      ? `Monté sur ${current.mountpoint || "—"}`
+      ? `Disque actif actuel: ${current.label || current.dev} (${current.mountpoint || "—"})`
       : "Aucun disque actif.";
   }
 }
@@ -139,6 +219,7 @@ async function loadDisks() {
     disksCache = data.disks || [];
     activeDev = data.active_dev || null;
     hasActiveDisk = !!activeDev;
+    renderDiskList();
     renderDestinations();
     updateActionLocks();
     setStatus("ok", `Connecté (${disksCache.length} disque${disksCache.length > 1 ? "s" : ""})`);
@@ -290,7 +371,9 @@ async function uploadFiles(files) {
 
 destSelect?.addEventListener("change", () => {
   const current = (disksCache || []).find(d => d.dev === destSelect.value);
-  if (destInfo) destInfo.textContent = current ? `Monté sur ${current.mountpoint || "—"}` : "";
+  if (destInfo && destSelect.value) {
+    destInfo.textContent = current ? `Monté sur ${current.mountpoint || "—"}` : "";
+  }
   updateActionLocks();
 });
 
