@@ -173,7 +173,10 @@ def api_import_sd(req: ImportRequest, background: BackgroundTasks):
                 raise HTTPException(status_code=400, detail="source disk cannot be the active destination")
             mp = src_disk.mountpoint
             if not mp:
-                mp, ok = provider.ensure_mounted(src_disk.dev, src_disk.fstype, readonly=True)
+                try:
+                    mp, ok = provider.ensure_mounted(src_disk.dev, src_disk.fstype, readonly=True)
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=str(e))
                 if not mp or not ok:
                     raise HTTPException(status_code=400, detail="source disk is not readable or could not be mounted")
             recommended, _ = recommended_path_for(Path(mp))

@@ -46,7 +46,10 @@ class DiskService:
             raise ValueError("Disk filesystem not supported")
 
         # 🔒 Sécurisation: montage + writable (automatique)
-        mp, ok = self.provider.ensure_writable(match.dev, match.fstype)
+        try:
+            mp, ok = self.provider.ensure_writable(match.dev, match.fstype)
+        except Exception as e:
+            raise ValueError(str(e))
         if mp:
             match.mountpoint = mp
         match.writable = ok

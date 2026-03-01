@@ -61,6 +61,9 @@ def _ensure_mounted_and_writable(dev: str, fstype: str | None) -> tuple[str | No
             if mp:
                 logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
                 return mp, _test_writable(mp)
+        if _is_polkit_error(e):
+            logger.warning("udisksctl mount requires polkit authorization for %s", dev)
+            raise RuntimeError(_polkit_message())
         logger.warning("udisksctl mount failed (%s) for %s", e, dev)
         return None, False
 
@@ -98,6 +101,10 @@ def _test_writable(mountpoint: str) -> bool:
         return False
 
 
+def _writable_hint(mountpoint: str) -> bool:
+    return os.access(mountpoint, os.W_OK)
+
+
 def _test_readable(mountpoint: str) -> bool:
     try:
         next(Path(mountpoint).iterdir(), None)
@@ -120,6 +127,22 @@ def _error_text(err: Exception) -> str:
 def _is_already_mounted_error(err: Exception) -> bool:
     msg = _error_text(err)
     return "AlreadyMounted" in msg or "already mounted" in msg
+
+
+def _is_polkit_error(err: Exception) -> bool:
+    msg = _error_text(err)
+    markers = [
+        "NotAuthorized",
+        "AuthenticationRequired",
+        "not authorized",
+        "authentication required",
+        "filesystem-mount-other-seat",
+    ]
+    return any(m in msg for m in markers)
+
+
+def _polkit_message() -> str:
+    return "Mount requires polkit authorization; configure polkit for storageapp"
 
 
 def _mountpoint_from_error(err: Exception) -> str | None:
@@ -169,6 +192,9 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
     def walk(node: dict, current_disk: Optional[dict] = None):
         nonlocal ignored
         node_type = node.get("type")
+        if node_type in {"loop", "zram"}:
+            ignored += 1
+            return
         if node_type == "disk":
             current_disk = node
             if node.get("tran") == "usb":
@@ -179,7 +205,7 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
                 return
             fstype = (node.get("fstype") or "").lower() or None
             mp = node.get("mountpoint")
-            parent_name = current_disk.get("name") if current_disk else None
+            parent_name = node.get("pkname") or (current_disk.get("name") if current_disk else None)
             is_usb = bool(parent_name and parent_name in usb_disks)
             if not is_usb:
                 logger.info("lsblk ignore part=%s reason=parent_not_usb", name)
@@ -201,7 +227,7 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
             disk.uuid = node.get("uuid")
             disk.partuuid = node.get("partuuid")
             disk.supported = (fstype in SUPPORTED_FS) if fstype else False
-            disk.writable = bool(mp) and _test_writable(mp)
+            disk.writable = _writable_hint(mp) if mp else None
             if disk.is_system:
                 logger.info("lsblk ignore part=%s reason=system_mount", name)
                 ignored += 1
@@ -225,7 +251,7 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
                 continue
             if f"/dev/{name}" in part_names:
                 continue
-            parent_name = next((d for d in usb_disks.keys() if _belongs_to_disk(name, d)), None)
+            parent_name = dev.get("pkname") or next((d for d in usb_disks.keys() if _belongs_to_disk(name, d)), None)
             if not parent_name:
                 continue
             fstype = (dev.get("fstype") or "").lower() or None
@@ -245,7 +271,7 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
             disk.uuid = dev.get("uuid")
             disk.partuuid = dev.get("partuuid")
             disk.supported = (fstype in SUPPORTED_FS) if fstype else False
-            disk.writable = bool(mp) and _test_writable(mp)
+            disk.writable = _writable_hint(mp) if mp else None
             if disk.is_system:
                 logger.info("lsblk ignore part=%s reason=system_mount", name)
                 ignored += 1
@@ -276,6 +302,9 @@ def _ensure_mounted(dev: str, fstype: str | None, readonly: bool = False) -> tup
             if mp:
                 logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
                 return mp, _test_readable(mp)
+        if _is_polkit_error(e):
+            logger.warning("udisksctl mount requires polkit authorization for %s", dev)
+            raise RuntimeError(_polkit_message())
         logger.warning("udisksctl mount failed (%s) for %s (readonly=%s)", e, dev, readonly)
         try:
             mp = _udisks_mount(dev)
@@ -285,6 +314,9 @@ def _ensure_mounted(dev: str, fstype: str | None, readonly: bool = False) -> tup
                 if mp:
                     logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
                     return mp, _test_readable(mp)
+            if _is_polkit_error(e2):
+                logger.warning("udisksctl mount requires polkit authorization for %s", dev)
+                raise RuntimeError(_polkit_message())
             logger.warning("udisksctl mount fallback failed (%s) for %s (readonly=%s)", e2, dev, readonly)
             return None, False
 
@@ -294,7 +326,7 @@ def _ensure_mounted(dev: str, fstype: str | None, readonly: bool = False) -> tup
 class LinuxLsblkProvider(DiskProvider):
     def list_disks(self) -> List[Disk]:
         try:
-            out = _run(["lsblk", "--json", "-o", "NAME,TYPE,FSTYPE,LABEL,SIZE,MOUNTPOINT,TRAN,RM,UUID,PARTUUID"])
+            out = _run(["lsblk", "--json", "-o", "NAME,TYPE,FSTYPE,LABEL,SIZE,MOUNTPOINT,TRAN,RM,UUID,PARTUUID,PKNAME"])
             data = json.loads(out)
         except Exception:
             logger.exception("Failed to list disks via lsblk")

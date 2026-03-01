@@ -36,6 +36,32 @@ def test_usb_disk_children_without_tran_on_part():
     assert parts[0].partuuid == "PARTUUID-1"
 
 
+def test_usb_disk_with_pkname_without_children():
+    data = {
+        "blockdevices": [
+            {
+                "name": "sdd",
+                "type": "disk",
+                "tran": "usb",
+                "rm": True,
+            },
+            {
+                "name": "sdd1",
+                "type": "part",
+                "pkname": "sdd",
+                "fstype": "exfat",
+                "label": "MEDIA",
+                "size": "32G",
+                "mountpoint": None,
+            },
+        ]
+    }
+
+    parts = _select_usb_partitions(data)
+    assert len(parts) == 1
+    assert parts[0].dev == "/dev/sdd1"
+
+
 def test_non_usb_disk_ignored():
     data = {
         "blockdevices": [

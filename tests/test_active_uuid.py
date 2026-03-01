@@ -32,3 +32,20 @@ def test_set_active_by_uuid(tmp_path):
     resolved = service.get_active()
     assert resolved is not None
     assert resolved.dev == "/dev/sdb1"
+
+
+def test_resolve_uuid_after_device_change(tmp_path):
+    d1 = Disk(dev="/dev/sda1", label="USB", fstype="ext4", mountpoint="/media/usb", uuid="UUID-1", supported=True, writable=True)
+    provider = StaticProvider([d1])
+    state = ActiveDiskState(tmp_path / "state.json")
+    service = DiskService(provider=provider, state=state)
+
+    service.set_active("UUID-1")
+
+    # device letter changes after reconnect
+    d2 = Disk(dev="/dev/sdc1", label="USB", fstype="ext4", mountpoint="/media/usb", uuid="UUID-1", supported=True, writable=True)
+    provider._disks = [d2]
+
+    resolved = service.get_active()
+    assert resolved is not None
+    assert resolved.dev == "/dev/sdc1"

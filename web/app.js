@@ -35,6 +35,13 @@ let sourcesCache = [];
 
 apiBaseLabel.textContent = API_BASE ? `API: ${API_BASE}` : `API: (same origin)`;
 
+function isActiveSelection(value) {
+  if (!value) return false;
+  const current = (disksCache || []).find(d => d.dev === activeDev);
+  if (!current) return false;
+  return value === current.dev || value === current.uuid || value === current.partuuid;
+}
+
 function setStatus(kind, text) {
   statusText.textContent = text;
   statusDot.style.background =
@@ -51,7 +58,7 @@ function updateActionLocks() {
   if (uploadBtn) uploadBtn.disabled = lockNoDisk || lockImportRunning;
   if (fileInput) fileInput.disabled = lockNoDisk || lockImportRunning;
   if (importBtn) importBtn.disabled = lockNoDisk || lockImportRunning || !hasSource;
-  if (destSetBtn) destSetBtn.disabled = !destSelect?.value || destSelect.value === activeDev;
+  if (destSetBtn) destSetBtn.disabled = !destSelect?.value || isActiveSelection(destSelect.value);
 
   if (lockNoDisk) {
     if (uploadStatus) uploadStatus.textContent = "Aucun disque actif disponible.";
@@ -134,8 +141,9 @@ function renderDiskList() {
     if (d.mountpoint) title.appendChild(badge("Monté", "badge--ok"));
     else title.appendChild(badge("Non monté", "badge--warn"));
 
-    if (d.writable) title.appendChild(badge("Écriture OK", "badge--ok"));
-    else title.appendChild(badge("Écriture KO", "badge--warn"));
+    if (d.writable === true) title.appendChild(badge("Écriture OK", "badge--ok"));
+    else if (d.writable === false) title.appendChild(badge("Écriture KO", "badge--warn"));
+    else title.appendChild(badge("Écriture ?", "badge--warn"));
 
     left.appendChild(title);
 
@@ -196,11 +204,11 @@ function renderDestinations() {
 
   for (const d of supported) {
     const opt = document.createElement("option");
-    opt.value = d.dev;
-    const writableHint = d.mountpoint && !d.writable ? " · lecture seule" : "";
+    opt.value = d.uuid || d.partuuid || d.dev;
+    const writableHint = d.mountpoint && d.writable === false ? " · lecture seule" : "";
     const mountHint = !d.mountpoint ? " · non monté" : "";
     opt.textContent = describeDisk(d) + writableHint + mountHint;
-    if (d.mountpoint && !d.writable) opt.disabled = true;
+    if (d.mountpoint && d.writable === false) opt.disabled = true;
     destSelect.appendChild(opt);
   }
 
@@ -370,7 +378,7 @@ async function uploadFiles(files) {
 }
 
 destSelect?.addEventListener("change", () => {
-  const current = (disksCache || []).find(d => d.dev === destSelect.value);
+  const current = (disksCache || []).find(d => [d.dev, d.uuid, d.partuuid].includes(destSelect.value));
   if (destInfo && destSelect.value) {
     destInfo.textContent = current ? `Monté sur ${current.mountpoint || "—"}` : "";
   }

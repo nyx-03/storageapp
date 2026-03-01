@@ -12,7 +12,7 @@ class Disk(BaseModel):
     tran: Optional[str] = None       # usb, mmc, sata...
     rm: Optional[bool] = None        # removable
     supported: bool = False
-    writable: bool = False
+    writable: Optional[bool] = None
     is_system: bool = False
     parent_dev: Optional[str] = None
     is_usb: Optional[bool] = None

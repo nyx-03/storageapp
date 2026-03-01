@@ -62,3 +62,25 @@ def test_already_mounted_writable(monkeypatch):
     mp, ok = linux_lsblk._ensure_mounted_and_writable(dev, "ext4")
     assert mp == "/media/root/ZZ-YY"
     assert ok is True
+
+
+def test_polkit_error_raises(monkeypatch):
+    dev = "/dev/sda1"
+
+    def boom(_cmd):
+        raise subprocess.CalledProcessError(
+            1,
+            ["udisksctl", "mount", "-b", dev],
+            output="",
+            stderr="GDBus.Error:org.freedesktop.UDisks2.Error.NotAuthorized: "
+                   "Not authorized to perform operation",
+        )
+
+    monkeypatch.setattr(linux_lsblk, "_run", boom)
+
+    try:
+        linux_lsblk._ensure_mounted_and_writable(dev, "ext4")
+    except RuntimeError as e:
+        assert "polkit" in str(e).lower()
+    else:
+        assert False, "Expected RuntimeError for polkit error"
