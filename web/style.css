@@ -394,6 +394,30 @@ code {
   padding-right: 4px;
 }
 
+.file-preview {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface-2);
+  margin-bottom: 10px;
+}
+
+.file-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.file-preview__media {
+  width: 100%;
+  max-height: 52vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #0b0f14;
+}
+
 .file-row {
   display: grid;
   grid-template-columns: 1fr auto;

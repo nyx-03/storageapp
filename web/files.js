@@ -12,6 +12,10 @@ const upBtn = $("#upBtn");
 const searchInput = $("#searchInput");
 const showHidden = $("#showHidden");
 const filesSummary = $("#filesSummary");
+const preview = $("#filePreview");
+const previewTitle = $("#previewTitle");
+const previewBody = $("#previewBody");
+const previewClose = $("#previewClose");
 
 let currentPath = "";
 let currentEntries = [];
@@ -70,10 +74,59 @@ function renderEntries(entries) {
       });
     } else {
       row.classList.add("file-row--file");
+      row.addEventListener("click", () => showPreview(e));
     }
 
     fileList.appendChild(row);
   }
+}
+
+function isImage(name) {
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name);
+}
+
+function isVideo(name) {
+  return /\.(mp4|mov|webm|ogg|mkv|avi)$/i.test(name);
+}
+
+function buildFilePath(name) {
+  return currentPath ? `${currentPath}/${name}` : name;
+}
+
+function showPreview(entry) {
+  if (!preview || !previewBody || !previewTitle) return;
+  preview.hidden = false;
+  previewTitle.textContent = entry.name;
+  previewBody.innerHTML = "";
+
+  const filePath = buildFilePath(entry.name);
+  const url = `/api/file?path=${encodeURIComponent(filePath)}`;
+
+  if (isImage(entry.name)) {
+    const img = document.createElement("img");
+    img.className = "file-preview__media";
+    img.src = url;
+    img.alt = entry.name;
+    previewBody.appendChild(img);
+  } else if (isVideo(entry.name)) {
+    const video = document.createElement("video");
+    video.className = "file-preview__media";
+    video.src = url;
+    video.controls = true;
+    video.playsInline = true;
+    previewBody.appendChild(video);
+  } else {
+    const info = document.createElement("div");
+    info.className = "muted";
+    info.textContent = "Aperçu non disponible pour ce type de fichier.";
+    previewBody.appendChild(info);
+  }
+}
+
+function hidePreview() {
+  if (!preview || !previewBody) return;
+  preview.hidden = true;
+  previewBody.innerHTML = "";
 }
 
 function applyFilters() {
@@ -88,6 +141,7 @@ function applyFilters() {
   if (filesSummary) {
     filesSummary.textContent = `${filtered.length} élément(s) affiché(s)`;
   }
+  hidePreview();
   renderEntries(filtered);
 }
 
@@ -125,5 +179,6 @@ upBtn?.addEventListener("click", () => {
 });
 searchInput?.addEventListener("input", applyFilters);
 showHidden?.addEventListener("change", applyFilters);
+previewClose?.addEventListener("click", hidePreview);
 
 loadFiles();

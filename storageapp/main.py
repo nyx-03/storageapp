@@ -12,6 +12,7 @@ import platform
 import socket
 import shutil
 import time
+import mimetypes
 
 from storageapp.settings import APP_ENV, STATE_FILE, MAX_UPLOAD_MB
 from storageapp.providers.mock import MockDiskProvider
@@ -399,3 +400,23 @@ def api_list_files(path: str | None = None):
         "entries": entries,
         "errors": errors,
     }
+
+
+@app.get("/api/file")
+def api_get_file(path: str):
+    active = service.get_active()
+    if not active or not active.mountpoint:
+        raise HTTPException(status_code=400, detail="No active disk selected")
+
+    base = Path(active.mountpoint).resolve()
+    rel = (path or "").lstrip("/")
+    target = (base / rel).resolve()
+
+    if not str(target).startswith(str(base)):
+        raise HTTPException(status_code=400, detail="Path outside active disk")
+
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    mime, _ = mimetypes.guess_type(str(target))
+    return FileResponse(str(target), media_type=mime or "application/octet-stream")
