@@ -19,6 +19,8 @@ def test_usb_disk_children_without_tran_on_part():
                         "mountpoint": None,
                         "tran": None,
                         "rm": None,
+                        "uuid": "UUID-1",
+                        "partuuid": "PARTUUID-1",
                     }
                 ],
             }
@@ -30,6 +32,8 @@ def test_usb_disk_children_without_tran_on_part():
     assert parts[0].dev == "/dev/sda1"
     assert parts[0].parent_dev == "/dev/sda"
     assert parts[0].is_usb is True
+    assert parts[0].uuid == "UUID-1"
+    assert parts[0].partuuid == "PARTUUID-1"
 
 
 def test_non_usb_disk_ignored():

@@ -51,44 +51,8 @@ def _udisks_mount(dev: str, options: str | None = None) -> str:
 def _ensure_mounted_and_writable(dev: str, fstype: str | None) -> tuple[str | None, bool]:
     """
     Essaie de garantir que la partition est montée et écrivable par l'utilisateur du process
-    (ici: storageapp via systemd).
+    (ici: storageapp via systemd). Pas d'options de montage imposées.
     """
-    fs = (fstype or "").lower()
-
-    # Pour les FS non-POSIX : on force uid/gid/umask
-    # vfat = FAT32, exfat, ntfs
-    if fs in {"vfat", "exfat", "ntfs"}:
-        uid = os.getuid()
-        gid = os.getgid()
-        opts = f"uid={uid},gid={gid},umask=0022"
-
-        # Si déjà monté ailleurs (ex: /media/nyx-03/...), on démonte puis on remonte proprement.
-        _udisks_unmount(dev)
-
-        try:
-            mp = _udisks_mount(dev, options=opts)
-        except Exception as e:
-            if _is_already_mounted_error(e):
-                mp = _lsblk_mountpoint(dev) or _mountpoint_from_error(e)
-                if mp:
-                    logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
-                    return mp, _test_writable(mp)
-            # fallback: tentative sans options
-            try:
-                mp = _udisks_mount(dev)
-            except Exception as e2:
-                if _is_already_mounted_error(e2):
-                    mp = _lsblk_mountpoint(dev) or _mountpoint_from_error(e2)
-                    if mp:
-                        logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
-                        return mp, _test_writable(mp)
-                return None, False
-
-        return mp, _test_writable(mp)
-
-    # FS POSIX (ext4, etc.)
-    # On ne force pas les permissions via options (ça ne marche pas comme FAT).
-    # On tente juste de monter si besoin, puis test writable.
     try:
         mp = _udisks_mount(dev)
     except Exception as e:
@@ -97,11 +61,10 @@ def _ensure_mounted_and_writable(dev: str, fstype: str | None) -> tuple[str | No
             if mp:
                 logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
                 return mp, _test_writable(mp)
-        mp = None
+        logger.warning("udisksctl mount failed (%s) for %s", e, dev)
+        return None, False
 
-    if mp:
-        return mp, _test_writable(mp)
-    return None, False
+    return mp, _test_writable(mp)
 
 
 def _run(cmd: list[str]) -> str:
@@ -109,8 +72,9 @@ def _run(cmd: list[str]) -> str:
         return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     except subprocess.CalledProcessError as e:
         logger.error(
-            "Command failed: %s stdout=%r stderr=%r",
+            "Command failed: %s rc=%s stdout=%r stderr=%r",
             cmd,
+            e.returncode,
             e.stdout,
             e.stderr,
         )
@@ -218,6 +182,7 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
             parent_name = current_disk.get("name") if current_disk else None
             is_usb = bool(parent_name and parent_name in usb_disks)
             if not is_usb:
+                logger.info("lsblk ignore part=%s reason=parent_not_usb", name)
                 ignored += 1
                 return
 
@@ -233,9 +198,12 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
             disk.parent_dev = f"/dev/{parent_name}" if parent_name else None
             disk.is_usb = True
             disk.is_system = _is_system_mount(mp)
+            disk.uuid = node.get("uuid")
+            disk.partuuid = node.get("partuuid")
             disk.supported = (fstype in SUPPORTED_FS) if fstype else False
             disk.writable = bool(mp) and _test_writable(mp)
             if disk.is_system:
+                logger.info("lsblk ignore part=%s reason=system_mount", name)
                 ignored += 1
                 return
             parts.append(disk)
@@ -274,9 +242,12 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
             disk.parent_dev = f"/dev/{parent_name}"
             disk.is_usb = True
             disk.is_system = _is_system_mount(mp)
+            disk.uuid = dev.get("uuid")
+            disk.partuuid = dev.get("partuuid")
             disk.supported = (fstype in SUPPORTED_FS) if fstype else False
             disk.writable = bool(mp) and _test_writable(mp)
             if disk.is_system:
+                logger.info("lsblk ignore part=%s reason=system_mount", name)
                 ignored += 1
                 continue
             parts.append(disk)
@@ -292,17 +263,9 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
 
 
 def _ensure_mounted(dev: str, fstype: str | None, readonly: bool = False) -> tuple[str | None, bool]:
-    fs = (fstype or "").lower()
     opts = []
-
     if readonly:
         opts.append("ro")
-
-    if fs in {"vfat", "exfat", "ntfs"}:
-        uid = os.getuid()
-        gid = os.getgid()
-        opts.append(f"uid={uid},gid={gid},umask=0022")
-
     options = ",".join(opts) if opts else None
 
     try:
@@ -331,7 +294,7 @@ def _ensure_mounted(dev: str, fstype: str | None, readonly: bool = False) -> tup
 class LinuxLsblkProvider(DiskProvider):
     def list_disks(self) -> List[Disk]:
         try:
-            out = _run(["lsblk", "--json", "-o", "NAME,TYPE,FSTYPE,LABEL,SIZE,MOUNTPOINT,TRAN,RM"])
+            out = _run(["lsblk", "--json", "-o", "NAME,TYPE,FSTYPE,LABEL,SIZE,MOUNTPOINT,TRAN,RM,UUID,PARTUUID"])
             data = json.loads(out)
         except Exception:
             logger.exception("Failed to list disks via lsblk")

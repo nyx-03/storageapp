@@ -258,7 +258,7 @@ async function loadSources() {
 
     for (const s of sourcesCache) {
       const opt = document.createElement("option");
-      opt.value = s.recommended_path || s.mountpoint || "";
+      opt.value = s.uuid || s.partuuid || s.dev || "";
       opt.textContent = `${s.label || s.dev} · ${s.size || "?"} · ${s.fstype || "?"}`;
       opt.dataset.mountpoint = s.mountpoint || "";
       sourceSelect.appendChild(opt);

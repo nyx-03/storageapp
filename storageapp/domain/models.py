@@ -16,3 +16,5 @@ class Disk(BaseModel):
     is_system: bool = False
     parent_dev: Optional[str] = None
     is_usb: Optional[bool] = None
+    uuid: Optional[str] = None
+    partuuid: Optional[str] = None

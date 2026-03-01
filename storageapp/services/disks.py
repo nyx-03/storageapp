@@ -17,7 +17,7 @@ class DiskService:
 
     def list_disks(self) -> List[Disk]:
         disks = self.provider.list_disks()
-        active = self.state.get_active_dev()
+        active = self.state.get_active_id()
 
         # Marque “actif” via un champ calculé (on le renverra côté API)
         for d in disks:
@@ -26,17 +26,20 @@ class DiskService:
         return disks
 
     def get_active(self) -> Optional[Disk]:
-        active = self.state.get_active_dev()
+        active = self.state.get_active_id()
         if not active:
             return None
         for d in self.provider.list_disks():
-            if d.dev == active:
+            if self._matches_id(d, active):
                 return d
         return None
 
-    def set_active(self, dev: str) -> Disk:
+    def _matches_id(self, disk: Disk, disk_id: str) -> bool:
+        return disk_id in {disk.dev, disk.uuid, disk.partuuid}
+
+    def set_active(self, disk_id: str) -> Disk:
         disks = self.provider.list_disks()
-        match = next((d for d in disks if d.dev == dev), None)
+        match = next((d for d in disks if self._matches_id(d, disk_id)), None)
         if not match:
             raise ValueError("Disk not found")
         if not match.supported:
@@ -51,7 +54,8 @@ class DiskService:
         if not ok:
             raise ValueError("Disk is not writable by the service (check filesystem or permissions)")
 
-        self.state.set_active_dev(dev)
+        stable_id = match.uuid or match.partuuid or match.dev
+        self.state.set_active_id(stable_id)
         return match
 
     def _safe_filename(self, name: str) -> str:

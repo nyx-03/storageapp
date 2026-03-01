@@ -65,7 +65,8 @@ class ImportRequest(BaseModel):
 @app.get("/api/disks")
 def api_list_disks():
     disks = service.list_disks()
-    active_dev = state.get_active_dev()
+    active = service.get_active()
+    active_dev = active.dev if active else None
     return {
         "active_dev": active_dev,
         "disks": [d.model_dump() | {"active": (d.dev == active_dev)} for d in disks],
@@ -125,7 +126,8 @@ def api_sd_sources():
 @app.get("/api/sources")
 def api_sources():
     """Liste des supports USB utilisables comme source de copie."""
-    active_dev = state.get_active_dev()
+    active = service.get_active()
+    active_dev = active.dev if active else None
     sources = []
     for d in service.list_disks():
         if d.dev == active_dev:
@@ -133,22 +135,8 @@ def api_sources():
             continue
 
         mp = d.mountpoint
-        ok = True
-        if not mp:
-            mp, ok = provider.ensure_mounted(d.dev, d.fstype, readonly=True)
-
-        if not mp or not ok:
-            logger.info(
-                "source skip dev=%s label=%s readonly=%s reason=%s",
-                d.dev,
-                d.label,
-                True,
-                "mount_failed" if not mp else "not_readable",
-            )
-            continue
-
-        recommended, sigs = recommended_path_for(Path(mp))
-        logger.info("source ok dev=%s label=%s readonly=%s mp=%s", d.dev, d.label, True, mp)
+        recommended, sigs = recommended_path_for(Path(mp)) if mp else (None, [])
+        logger.info("source candidate dev=%s label=%s mp=%s", d.dev, d.label, mp)
         sources.append({
             "dev": d.dev,
             "label": d.label,
@@ -157,6 +145,8 @@ def api_sources():
             "mountpoint": mp,
             "recommended_path": recommended,
             "signatures": sigs,
+            "uuid": d.uuid,
+            "partuuid": d.partuuid,
         })
 
     return {"sources": sources}
@@ -171,37 +161,44 @@ def api_import_sd(req: ImportRequest, background: BackgroundTasks):
     if not active.mountpoint or not active.writable:
         raise HTTPException(status_code=400, detail="Active disk is not writable or has no mountpoint")
 
-    sources = find_media_sources()
-    allowed = set()
-    for s in sources:
-        if s.get("path"):
-            allowed.add(str(Path(s["path"]).resolve()))
-        if s.get("recommended_path"):
-            allowed.add(str(Path(s["recommended_path"]).resolve()))
+    source_value = req.source_path.strip()
+    src_path: Path | None = None
 
-    for d in service.list_disks():
-        if d.dev == active.dev:
-            continue
-        mp = d.mountpoint
-        ok = True
-        if not mp:
-            mp, ok = provider.ensure_mounted(d.dev, d.fstype, readonly=True)
-        if not mp or not ok:
-            continue
-        allowed.add(str(Path(mp).resolve()))
-        recommended, _ = recommended_path_for(Path(mp))
-        allowed.add(str(Path(recommended).resolve()))
+    # If user passes a device id/uuid, resolve and mount read-only on demand.
+    if source_value.startswith("/dev/") or len(source_value) >= 8:
+        disks = service.list_disks()
+        src_disk = next((d for d in disks if source_value in {d.dev, d.uuid, d.partuuid}), None)
+        if src_disk:
+            if src_disk.dev == active.dev:
+                raise HTTPException(status_code=400, detail="source disk cannot be the active destination")
+            mp = src_disk.mountpoint
+            if not mp:
+                mp, ok = provider.ensure_mounted(src_disk.dev, src_disk.fstype, readonly=True)
+                if not mp or not ok:
+                    raise HTTPException(status_code=400, detail="source disk is not readable or could not be mounted")
+            recommended, _ = recommended_path_for(Path(mp))
+            src_path = Path(recommended)
 
-    src = Path(req.source_path).resolve()
-    if str(src) not in allowed:
-        raise HTTPException(status_code=400, detail="source_path is not an allowed SD source")
+    if src_path is None:
+        # Fallback: strict whitelist from detected media sources
+        sources = find_media_sources()
+        allowed = set()
+        for s in sources:
+            if s.get("path"):
+                allowed.add(str(Path(s["path"]).resolve()))
+            if s.get("recommended_path"):
+                allowed.add(str(Path(s["recommended_path"]).resolve()))
 
-    if not src.exists() or not src.is_dir():
+        src_path = Path(source_value).resolve()
+        if str(src_path) not in allowed:
+            raise HTTPException(status_code=400, detail="source_path is not an allowed SD source")
+
+    if not src_path.exists() or not src_path.is_dir():
         raise HTTPException(status_code=400, detail="source_path is not a valid directory")
 
-    dest = Path(active.mountpoint) / "imports" / date.today().isoformat() / src.name
+    dest = Path(active.mountpoint) / "imports" / date.today().isoformat() / src_path.name
     try:
-        job = import_store.create_if_available(source=str(src), dest=str(dest), ignore_existing=req.ignore_existing)
+        job = import_store.create_if_available(source=str(src_path), dest=str(dest), ignore_existing=req.ignore_existing)
     except ImportBusyError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
