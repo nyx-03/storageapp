@@ -9,8 +9,12 @@ const fileList = $("#fileList");
 const filesError = $("#filesError");
 const refreshBtn = $("#refreshBtn");
 const upBtn = $("#upBtn");
+const searchInput = $("#searchInput");
+const showHidden = $("#showHidden");
+const filesSummary = $("#filesSummary");
 
 let currentPath = "";
+let currentEntries = [];
 
 function setStatus(kind, text) {
   statusText.textContent = text;
@@ -51,7 +55,10 @@ function renderEntries(entries) {
 
     const right = document.createElement("div");
     right.className = "file-meta";
-    right.textContent = e.type === "dir" ? "Dossier" : fmtBytes(e.size);
+    const mtime = e.mtime ? new Date(e.mtime * 1000).toLocaleString() : "—";
+    right.innerHTML = e.type === "dir"
+      ? `<span>Dossier</span><span>${mtime}</span>`
+      : `<span>${fmtBytes(e.size)}</span><span>${mtime}</span>`;
 
     row.appendChild(left);
     row.appendChild(right);
@@ -69,6 +76,21 @@ function renderEntries(entries) {
   }
 }
 
+function applyFilters() {
+  const term = (searchInput?.value || "").trim().toLowerCase();
+  const showHiddenValue = !!showHidden?.checked;
+  const filtered = (currentEntries || []).filter((e) => {
+    if (!showHiddenValue && e.name.startsWith(".")) return false;
+    if (!term) return true;
+    return e.name.toLowerCase().includes(term);
+  });
+
+  if (filesSummary) {
+    filesSummary.textContent = `${filtered.length} élément(s) affiché(s)`;
+  }
+  renderEntries(filtered);
+}
+
 async function loadFiles() {
   try {
     setStatus("warn", "Chargement…");
@@ -83,7 +105,8 @@ async function loadFiles() {
     mountLabel.textContent = data.disk?.mountpoint || "—";
     filesPath.textContent = "/" + (data.cwd || "");
 
-    renderEntries(data.entries || []);
+    currentEntries = data.entries || [];
+    applyFilters();
     setStatus("ok", "Connecté");
   } catch (e) {
     console.error(e);
@@ -100,5 +123,7 @@ upBtn?.addEventListener("click", () => {
   currentPath = parts.join("/");
   loadFiles();
 });
+searchInput?.addEventListener("input", applyFilters);
+showHidden?.addEventListener("change", applyFilters);
 
 loadFiles();

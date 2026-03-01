@@ -43,8 +43,8 @@
       </div>
     </section>
 
-    <section class="grid">
-      <div class="card">
+    <section class="grid grid--wide">
+      <div class="card file-explorer">
         <div class="card__head">
           <h3>Explorateur</h3>
           <div class="form-row">
@@ -52,7 +52,17 @@
             <button class="btn btn--ghost" id="refreshBtn">Rafraîchir</button>
           </div>
         </div>
-        <div class="muted files-path" id="filesPath">/</div>
+        <div class="files-toolbar">
+          <div class="files-path" id="filesPath">/</div>
+          <div class="files-controls">
+            <input class="input" id="searchInput" type="text" placeholder="Filtrer par nom…" />
+            <label class="checkbox">
+              <input type="checkbox" id="showHidden" />
+              Afficher fichiers cachés
+            </label>
+          </div>
+        </div>
+        <div class="files-summary muted" id="filesSummary">—</div>
         <div class="file-list" id="fileList"></div>
         <div class="muted" id="filesError"></div>
       </div>

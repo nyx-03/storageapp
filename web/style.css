@@ -365,9 +365,33 @@ code {
   margin-bottom: 10px;
 }
 
+.file-explorer {
+  min-height: 60vh;
+}
+
+.files-toolbar {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.files-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.files-summary {
+  margin-bottom: 8px;
+}
+
 .file-list {
   display: grid;
   gap: 8px;
+  max-height: 60vh;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .file-row {
@@ -392,6 +416,9 @@ code {
 }
 
 .file-meta {
+  display: grid;
+  gap: 2px;
+  text-align: right;
   font-size: 12px;
   color: var(--muted);
 }
