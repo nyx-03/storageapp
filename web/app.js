@@ -320,31 +320,56 @@ function renderImportJobs(jobs) {
     return;
   }
 
-  const html = list.slice(0, 3).map((j) => {
-    const status = j.status || "?";
-    const icon = status === "done" ? "✅" : status === "failed" ? "❌" : status === "running" ? "⏳" : "🕘";
-    const err = j.error ? `<div class="muted">${j.error}</div>` : "";
+  const html = list.slice(0, 5).map((j) => {
+    const state = j.state || "?";
+    const icon = state === "done" ? "✅" : state === "failed" ? "❌" : state === "verifying" ? "🔎" : state === "copying" ? "⏳" : "🕘";
+    const progress = j.progress || {};
+    const pct = progress.total ? Math.round((progress.bytes_done / progress.total) * 100) : null;
+    const verified = j.integrity?.verified ? " · vérifié" : "";
+    const err = j.last_error?.message ? `<div class="muted">${j.last_error.message}</div>` : "";
+    const actions = [];
+    if (state === "failed") actions.push(`<button class="btn btn--ghost job-action" data-action="retry" data-id="${j.id}">Retry</button>`);
+    if (state === "paused") actions.push(`<button class="btn btn--ghost job-action" data-action="resume" data-id="${j.id}">Reprendre</button>`);
+    if (["queued", "copying", "verifying", "retrying"].includes(state)) {
+      actions.push(`<button class="btn btn--ghost job-action" data-action="cancel" data-id="${j.id}">Pause</button>`);
+    }
     return `
       <div class="row" style="grid-template-columns: 1fr;">
         <div class="row__title" style="justify-content: space-between;">
           <strong>${icon} Import</strong>
-          <span class="badge ${status === "done" ? "badge--ok" : status === "failed" ? "badge--danger" : "badge--warn"}">${status}</span>
+          <span class="badge ${state === "done" ? "badge--ok" : state === "failed" ? "badge--danger" : "badge--warn"}">${state}${verified}</span>
         </div>
-        ${j.progress != null ? `<div class="muted">Progression: ${j.progress.toFixed(1)}%</div>` : ""}
+        ${pct != null ? `<div class="muted">Progression: ${pct}%</div>` : ""}
         ${err}
+        ${actions.length ? `<div class="actions">${actions.join("")}</div>` : ""}
       </div>
     `;
   }).join("");
 
   importJobsEl.innerHTML = html;
+  importJobsEl.querySelectorAll(".job-action").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      if (!id || !action) return;
+      try {
+        await apiPost(`/api/import-jobs/${id}/${action}`, {});
+        await refreshImportJobs();
+      } catch (e) {
+        console.error(e);
+        alert(`Action impossible: ${e.message || e}`);
+      }
+    });
+  });
 }
 
 async function refreshImportJobs() {
   try {
     const data = await apiGet("/api/import-jobs");
-    hasRunningImport = (data.jobs || []).some(j => j.status === "running");
+    const jobs = (data.jobs || []).filter(j => j.type === "copy");
+    hasRunningImport = jobs.some(j => ["queued", "copying", "verifying", "retrying"].includes(j.state));
     updateActionLocks();
-    renderImportJobs(data.jobs || []);
+    renderImportJobs(jobs);
   } catch (e) {
     console.error(e);
   }

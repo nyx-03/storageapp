@@ -34,6 +34,14 @@ class DiskService:
                 return d
         return None
 
+    def resolve_disk(self, disk_id: str) -> Optional[Disk]:
+        if not disk_id:
+            return None
+        for d in self.provider.list_disks():
+            if self._matches_id(d, disk_id):
+                return d
+        return None
+
     def _matches_id(self, disk: Disk, disk_id: str) -> bool:
         return disk_id in {disk.dev, disk.uuid, disk.partuuid}
 

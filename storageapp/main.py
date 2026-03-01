@@ -4,8 +4,8 @@ from pydantic import BaseModel
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from fastapi import BackgroundTasks
 from pathlib import Path
+import os
 import subprocess
 import logging
 import platform
@@ -13,13 +13,24 @@ import socket
 import shutil
 import time
 import mimetypes
+import hashlib
+import re
+from dataclasses import asdict
 
 from storageapp.settings import APP_ENV, STATE_FILE, MAX_UPLOAD_MB
 from storageapp.providers.mock import MockDiskProvider
 from storageapp.providers.linux_lsblk import LinuxLsblkProvider
 from storageapp.services.state import ActiveDiskState
 from storageapp.services.disks import DiskService
-from storageapp.services.import_jobs import ImportJobStore, run_rsync_job, job_to_dict, ImportBusyError
+from storageapp.services.import_jobs import (
+    JobStore,
+    JobRunner,
+    JobError,
+    new_copy_job,
+    new_upload_job,
+    merge_ranges,
+    missing_ranges,
+)
 from storageapp.services.sd_detect import find_media_sources, recommended_path_for
 
 from fastapi import UploadFile, File
@@ -43,6 +54,11 @@ def home():
     return FileResponse(str(WEB_DIR / "index.html"))
 
 
+@app.on_event("startup")
+def _start_jobs():
+    job_runner.start()
+
+
 @app.get("/system")
 def system_page():
     return FileResponse(str(WEB_DIR / "system.html"))
@@ -52,11 +68,22 @@ def system_page():
 def files_page():
     return FileResponse(str(WEB_DIR / "files.html"))
 
+
+@app.get("/upload")
+def upload_page():
+    return FileResponse(str(WEB_DIR / "upload.html"))
+
 provider = LinuxLsblkProvider() if APP_ENV == "pi" else MockDiskProvider()
 state = ActiveDiskState(STATE_FILE)
 service = DiskService(provider=provider, state=state)
 
-import_store = ImportJobStore()
+job_store = JobStore()
+job_runner = JobRunner(
+    store=job_store,
+    resolve_disk=service.resolve_disk,
+    ensure_mounted=provider.ensure_mounted,
+    ensure_writable=provider.ensure_writable,
+)
 
 
 class SetActiveRequest(BaseModel):
@@ -159,7 +186,7 @@ def api_sources():
 
 
 @app.post("/api/import-sd")
-def api_import_sd(req: ImportRequest, background: BackgroundTasks):
+def api_import_sd(req: ImportRequest):
     """Lance un import rsync depuis la carte SD vers le disque actif."""
     active = service.get_active()
     if not active:
@@ -205,33 +232,84 @@ def api_import_sd(req: ImportRequest, background: BackgroundTasks):
     if not src_path.exists() or not src_path.is_dir():
         raise HTTPException(status_code=400, detail="source_path is not a valid directory")
 
-    dest = Path(active.mountpoint) / "imports" / date.today().isoformat() / src_path.name
-    try:
-        job = import_store.create_if_available(source=str(src_path), dest=str(dest), ignore_existing=req.ignore_existing)
-    except ImportBusyError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
-        logger.exception("Failed to create import job")
-        raise HTTPException(status_code=500, detail=f"Failed to create import job: {e}")
+    # Resolve source disk UUID from mountpoint
+    src_disk = None
+    for d in service.list_disks():
+        if d.mountpoint and str(src_path).startswith(str(Path(d.mountpoint).resolve())):
+            src_disk = d
+            break
+    if not src_disk:
+        raise HTTPException(status_code=400, detail="source disk not recognized")
 
-    background.add_task(run_rsync_job, import_store, job.id)
+    src_rel = str(src_path.relative_to(Path(src_disk.mountpoint)))
+    dest_rel = str(Path("imports") / date.today().isoformat() / src_path.name)
+    dst_id = active.uuid or active.partuuid or active.dev
+    src_id = src_disk.uuid or src_disk.partuuid or src_disk.dev
 
-    payload = job_to_dict(job)
-    payload["ignore_existing"] = bool(req.ignore_existing)
-    return {"job": payload}
+    job = new_copy_job(src_id, src_rel, dst_id, dest_rel)
+    job_store.create(job)
+
+    return {"job": asdict(job)}
 
 
 @app.get("/api/import-jobs")
 def api_import_jobs():
-    return {"jobs": [job_to_dict(j) for j in import_store.list()]}
+    return {"jobs": [asdict(j) for j in job_store.list()]}
 
 
 @app.get("/api/import-jobs/{job_id}")
 def api_import_job(job_id: str):
-    job = import_store.get(job_id)
+    job = job_store.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return {"job": job_to_dict(job)}
+    return {"job": asdict(job)}
+
+
+class CopyJobRequest(BaseModel):
+    src_rel_path: str
+    src_uuid: str
+    dst_rel_path: str
+    dst_uuid: str
+
+
+@app.post("/api/import-jobs/copy")
+def api_create_copy_job(req: CopyJobRequest):
+    job = new_copy_job(req.src_uuid, req.src_rel_path, req.dst_uuid, req.dst_rel_path)
+    job_store.create(job)
+    return {"job": asdict(job)}
+
+
+@app.post("/api/import-jobs/{job_id}/retry")
+def api_retry_job(job_id: str):
+    job = job_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.state = "retrying"
+    job.retry_at = time.time()
+    job_store.update(job)
+    return {"job": asdict(job)}
+
+
+@app.post("/api/import-jobs/{job_id}/cancel")
+def api_cancel_job(job_id: str):
+    job = job_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.state = "paused"
+    job.last_error = JobError(code="CANCELLED", message="Cancelled by user", detail=None)
+    job_store.update(job)
+    return {"job": asdict(job)}
+
+
+@app.post("/api/import-jobs/{job_id}/resume")
+def api_resume_job(job_id: str):
+    job = job_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.state == "paused":
+        job.state = "queued"
+        job_store.update(job)
+    return {"job": asdict(job)}
 
 
 # System actions
@@ -420,3 +498,206 @@ def api_get_file(path: str):
 
     mime, _ = mimetypes.guess_type(str(target))
     return FileResponse(str(target), media_type=mime or "application/octet-stream")
+
+
+class UploadInitRequest(BaseModel):
+    filename: str
+    size: int
+    sha256: str | None = None
+    dir: str | None = None
+
+
+CHUNK_SIZE = 4 * 1024 * 1024
+
+
+def _safe_rel_path(path: str) -> str:
+    rel = path.replace("\\", "/").strip().lstrip("/")
+    if ".." in rel.split("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    return rel
+
+
+def _active_disk_or_400():
+    active = service.get_active()
+    if not active:
+        raise HTTPException(status_code=400, detail="No active disk selected")
+    return active
+
+
+def _resolve_job_disk_or_400(job) -> tuple[object, str]:
+    disk_id = job.dest.mount_uuid
+    if not disk_id:
+        raise HTTPException(status_code=400, detail="Upload has no destination disk id")
+    disk = service.resolve_disk(disk_id)
+    if not disk:
+        raise HTTPException(status_code=400, detail="Destination disk not found")
+    mp = disk.mountpoint
+    if not mp:
+        try:
+            mp, ok = provider.ensure_writable(disk.dev, disk.fstype)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not mp or not ok:
+            raise HTTPException(status_code=400, detail="Destination disk not writable")
+    return disk, mp
+
+
+@app.post("/api/uploads/init")
+def api_upload_init(req: UploadInitRequest):
+    active = _active_disk_or_400()
+    if not active.uuid and not active.partuuid:
+        raise HTTPException(status_code=400, detail="Active disk has no stable identifier")
+
+    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    if req.size > max_bytes:
+        raise HTTPException(status_code=413, detail="Upload too large")
+
+    safe_name = DiskService._safe_filename(service, req.filename)
+    dir_rel = _safe_rel_path(req.dir) if req.dir else ""
+    rel = str(Path(dir_rel) / safe_name) if dir_rel else safe_name
+
+    job = new_upload_job(active.uuid or active.partuuid or active.dev, rel, req.size, req.sha256)
+    job_store.create(job)
+
+    return {
+        "upload_id": job.id,
+        "chunk_size": CHUNK_SIZE,
+        "received_ranges": job.progress.received_ranges or [],
+    }
+
+
+@app.get("/api/uploads/{upload_id}")
+def api_upload_status(upload_id: str):
+    job = job_store.get(upload_id)
+    if not job or job.type != "upload":
+        raise HTTPException(status_code=404, detail="Upload not found")
+    total = job.progress.total or 0
+    ranges = job.progress.received_ranges or []
+    return {
+        "job": asdict(job),
+        "missing_ranges": missing_ranges(ranges, total),
+    }
+
+
+def _parse_content_range(value: str) -> tuple[int, int, int]:
+    m = re.match(r"bytes\\s+(\\d+)-(\\d+)/(\\d+)", value)
+    if not m:
+        raise HTTPException(status_code=400, detail="Invalid Content-Range")
+    start, end, total = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    if end < start:
+        raise HTTPException(status_code=400, detail="Invalid Content-Range")
+    if start < 0 or end < 0 or total <= 0 or end >= total:
+        raise HTTPException(status_code=400, detail="Invalid Content-Range")
+    return start, end, total
+
+
+@app.put("/api/uploads/{upload_id}")
+async def api_upload_chunk(upload_id: str, request: Request):
+    job = job_store.get(upload_id)
+    if not job or job.type != "upload":
+        raise HTTPException(status_code=404, detail="Upload not found")
+    if job.state in {"done", "failed"}:
+        raise HTTPException(status_code=409, detail=f"Upload is {job.state}")
+
+    content_range = request.headers.get("content-range")
+    if not content_range:
+        raise HTTPException(status_code=411, detail="Content-Range required")
+
+    start, end, total = _parse_content_range(content_range)
+    if job.progress.total is None:
+        job.progress.total = total
+    if total != job.progress.total:
+        raise HTTPException(status_code=400, detail="Content-Range total mismatch")
+
+    _, dest_mp = _resolve_job_disk_or_400(job)
+
+    tmp_file = Path(dest_mp) / (job.dest.tmp_path or f".storageapp/tmp/{job.id}.part")
+    tmp_file.parent.mkdir(parents=True, exist_ok=True)
+
+    expected = end - start + 1
+    written = 0
+    start_time = time.time()
+    with tmp_file.open("r+b" if tmp_file.exists() else "wb") as f:
+        f.seek(start)
+        remaining = end - start + 1
+        async for chunk in request.stream():
+            if not chunk:
+                break
+            if len(chunk) > remaining:
+                chunk = chunk[:remaining]
+            f.write(chunk)
+            written += len(chunk)
+            remaining -= len(chunk)
+            if remaining <= 0:
+                break
+        f.flush()
+        os.fsync(f.fileno())
+
+    if written != expected:
+        raise HTTPException(status_code=400, detail="Chunk size mismatch")
+
+    ranges = job.progress.received_ranges or []
+    ranges = merge_ranges(ranges, [start, end])
+    job.progress.received_ranges = ranges
+    job.progress.bytes_done = sum(r[1] - r[0] + 1 for r in ranges)
+    elapsed = max(time.time() - start_time, 0.001)
+    job.progress.speed = written / elapsed
+    job_store.update(job)
+
+    return {"received_ranges": ranges, "bytes_done": job.progress.bytes_done}
+
+
+@app.post("/api/uploads/{upload_id}/finalize")
+def api_upload_finalize(upload_id: str):
+    job = job_store.get(upload_id)
+    if not job or job.type != "upload":
+        raise HTTPException(status_code=404, detail="Upload not found")
+    if job.state == "done":
+        return {"job": asdict(job)}
+    if job.state == "failed":
+        raise HTTPException(status_code=409, detail="Upload already failed")
+
+    total = job.progress.total or 0
+    ranges = job.progress.received_ranges or []
+    missing = missing_ranges(ranges, total)
+    if missing:
+        raise HTTPException(status_code=400, detail="Upload incomplete")
+
+    _, dest_mp = _resolve_job_disk_or_400(job)
+
+    tmp_file = Path(dest_mp) / (job.dest.tmp_path or f".storageapp/tmp/{job.id}.part")
+    final_file = Path(dest_mp) / (job.dest.relative_path or f"{job.id}")
+
+    if not tmp_file.exists():
+        raise HTTPException(status_code=404, detail="Temp file not found")
+
+    job.state = "verifying"
+    job_store.update(job)
+
+    hasher = hashlib.sha256()
+    with tmp_file.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    dest_hash = hasher.hexdigest()
+    job.integrity.dest_sha256 = dest_hash
+
+    if job.integrity.source_sha256 and job.integrity.source_sha256 != dest_hash:
+        job.state = "failed"
+        job.last_error = JobError(code="CHECKSUM_MISMATCH", message="Checksum mismatch", detail=None)
+        job_store.update(job)
+        raise HTTPException(status_code=400, detail="Checksum mismatch")
+
+    if final_file.exists():
+        job.state = "failed"
+        job.last_error = JobError(code="EIO", message="Destination already exists", detail=None)
+        job_store.update(job)
+        raise HTTPException(status_code=400, detail="Destination already exists")
+
+    final_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp_file.replace(final_file)
+    job.integrity.verified = True
+    job.state = "done"
+    job.finished_at = time.time()
+    job_store.update(job)
+
+    return {"job": asdict(job)}
