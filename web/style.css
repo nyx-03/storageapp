@@ -361,6 +361,41 @@ code {
   font-weight: 600;
 }
 
+.files-path {
+  margin-bottom: 10px;
+}
+
+.file-list {
+  display: grid;
+  gap: 8px;
+}
+
+.file-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.file-row--file {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.file-name {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.file-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .empty { padding: 18px 6px; text-align: center; }
 .muted { color: var(--muted); }
 

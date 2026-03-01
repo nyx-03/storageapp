@@ -46,6 +46,11 @@ def home():
 def system_page():
     return FileResponse(str(WEB_DIR / "system.html"))
 
+
+@app.get("/files")
+def files_page():
+    return FileResponse(str(WEB_DIR / "files.html"))
+
 provider = LinuxLsblkProvider() if APP_ENV == "pi" else MockDiskProvider()
 state = ActiveDiskState(STATE_FILE)
 service = DiskService(provider=provider, state=state)
@@ -346,4 +351,51 @@ def api_system_info():
             "used": disk.used,
             "free": disk.free,
         },
+    }
+
+
+@app.get("/api/files")
+def api_list_files(path: str | None = None):
+    active = service.get_active()
+    if not active or not active.mountpoint:
+        raise HTTPException(status_code=400, detail="No active disk selected")
+
+    base = Path(active.mountpoint).resolve()
+    rel = (path or "").lstrip("/")
+    target = (base / rel).resolve()
+
+    if not str(target).startswith(str(base)):
+        raise HTTPException(status_code=400, detail="Path outside active disk")
+
+    if not target.exists() or not target.is_dir():
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+
+    entries = []
+    errors = []
+    try:
+        for entry in target.iterdir():
+            try:
+                stat = entry.stat()
+                entries.append({
+                    "name": entry.name,
+                    "type": "dir" if entry.is_dir() else "file",
+                    "size": stat.st_size,
+                    "mtime": int(stat.st_mtime),
+                })
+            except Exception as e:
+                errors.append({"name": entry.name, "error": str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list directory: {e}")
+
+    entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
+
+    return {
+        "disk": {
+            "dev": active.dev,
+            "label": active.label,
+            "mountpoint": active.mountpoint,
+        },
+        "cwd": str(target.relative_to(base)),
+        "entries": entries,
+        "errors": errors,
     }

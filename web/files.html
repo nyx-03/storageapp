@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StorageApp — Fichiers</title>
+  <link rel="stylesheet" href="/web/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">S</div>
+      <div>
+        <h1>StorageApp</h1>
+        <p>Navigation des fichiers</p>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <a class="nav__link" href="/">Transferts</a>
+      <a class="nav__link nav__link--active" href="/files">Fichiers</a>
+      <a class="nav__link" href="/system">Raspberry</a>
+    </nav>
+
+    <div class="status" id="filesStatus">
+      <span class="dot" id="filesStatusDot"></span>
+      <span id="filesStatusText">Chargement…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Fichiers</div>
+        <h2>Parcourir le contenu du disque actif.</h2>
+        <p class="muted">Sélectionne d’abord un disque actif dans l’onglet Transferts.</p>
+      </div>
+      <div class="hero__panel">
+        <div class="kv">
+          <div><span>Disque actif</span><strong id="filesDiskLabel">—</strong></div>
+          <div><span>Montage</span><strong id="filesMount">—</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card__head">
+          <h3>Explorateur</h3>
+          <div class="form-row">
+            <button class="btn btn--ghost" id="upBtn">Remonter</button>
+            <button class="btn btn--ghost" id="refreshBtn">Rafraîchir</button>
+          </div>
+        </div>
+        <div class="muted files-path" id="filesPath">/</div>
+        <div class="file-list" id="fileList"></div>
+        <div class="muted" id="filesError"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span class="muted">StorageApp — Parcourir les fichiers</span>
+  </footer>
+
+  <script src="/web/files.js"></script>
+</body>
+</html>
