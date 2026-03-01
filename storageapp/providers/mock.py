@@ -46,3 +46,6 @@ class MockDiskProvider(DiskProvider):
         if not d:
             return None, False
         return d.mountpoint, True
+
+    def unmount(self, dev: str) -> bool:
+        return True

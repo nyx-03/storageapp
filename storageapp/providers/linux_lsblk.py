@@ -338,3 +338,11 @@ class LinuxLsblkProvider(DiskProvider):
 
     def ensure_mounted(self, dev: str, fstype: str | None, readonly: bool = False) -> tuple[str | None, bool]:
         return _ensure_mounted(dev, fstype, readonly=readonly)
+
+    def unmount(self, dev: str) -> bool:
+        try:
+            _run(["udisksctl", "unmount", "-b", dev])
+            return True
+        except Exception:
+            logger.exception("udisksctl unmount failed for %s", dev)
+            return False

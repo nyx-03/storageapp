@@ -326,6 +326,24 @@ def api_system_shutdown():
     if APP_ENV != "pi":
         return {"ok": True, "message": "(dev) Shutdown simulated"}
 
+    # Try to unmount all mounted non-system disks before shutdown
+    disks = service.list_disks()
+    unmount_errors = []
+    for d in disks:
+        if not d.mountpoint:
+            continue
+        if d.is_system:
+            continue
+        ok = provider.unmount(d.dev)
+        if not ok:
+            unmount_errors.append(d.dev)
+
+    if unmount_errors:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to unmount: {', '.join(unmount_errors)}",
+        )
+
     try:
         # Try systemd poweroff first
         r = subprocess.run(

@@ -16,3 +16,7 @@ class DiskProvider(ABC):
     def ensure_mounted(self, dev: str, fstype: str | None, readonly: bool = False) -> Tuple[Optional[str], bool]:
         # Par défaut : ne fait rien (utile pour le provider mock)
         return None, False
+
+    def unmount(self, dev: str) -> bool:
+        # Par défaut : noop
+        return True
