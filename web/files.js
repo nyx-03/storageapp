@@ -103,6 +103,7 @@ function buildFilePath(name) {
 function showPreview(entry) {
   if (!preview || !previewBody || !previewTitle) return;
   preview.hidden = false;
+  document.body.classList.add("preview-open");
   previewTitle.textContent = entry.name;
   previewBody.innerHTML = "";
 
@@ -134,6 +135,7 @@ function hidePreview() {
   if (!preview || !previewBody) return;
   preview.hidden = true;
   previewBody.innerHTML = "";
+  document.body.classList.remove("preview-open");
 }
 
 function applyFilters() {
@@ -187,5 +189,8 @@ upBtn?.addEventListener("click", () => {
 searchInput?.addEventListener("input", applyFilters);
 showHidden?.addEventListener("change", applyFilters);
 previewClose?.addEventListener("click", hidePreview);
+preview?.addEventListener("click", (e) => {
+  if (e.target === preview) hidePreview();
+});
 
 loadFiles();

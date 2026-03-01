@@ -63,18 +63,21 @@
           </div>
         </div>
         <div class="files-summary muted" id="filesSummary">—</div>
-        <div class="file-preview" id="filePreview" hidden>
-          <div class="file-preview__head">
-            <strong id="previewTitle">—</strong>
-            <button class="btn btn--ghost" id="previewClose">Fermer</button>
-          </div>
-          <div class="file-preview__body" id="previewBody"></div>
-        </div>
         <div class="file-list" id="fileList"></div>
         <div class="muted" id="filesError"></div>
       </div>
     </section>
   </main>
+
+  <div class="file-preview-overlay" id="filePreview" hidden>
+    <div class="file-preview">
+      <div class="file-preview__head">
+        <strong id="previewTitle">—</strong>
+        <button class="btn btn--ghost" id="previewClose">Fermer</button>
+      </div>
+      <div class="file-preview__body" id="previewBody"></div>
+    </div>
+  </div>
 
   <footer class="footer">
     <span class="muted">StorageApp — Parcourir les fichiers</span>
