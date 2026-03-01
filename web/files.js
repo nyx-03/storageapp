@@ -52,10 +52,17 @@ function renderEntries(entries) {
   for (const e of entries) {
     const row = document.createElement("div");
     row.className = "file-row";
+    row.dataset.type = e.type;
 
     const left = document.createElement("div");
     left.className = "file-name";
-    left.textContent = e.name;
+    const tag = document.createElement("span");
+    tag.className = `file-tag ${e.type === "dir" ? "file-tag--dir" : "file-tag--file"}`;
+    tag.textContent = e.type === "dir" ? "DIR" : "FILE";
+    const name = document.createElement("span");
+    name.textContent = e.name;
+    left.appendChild(tag);
+    left.appendChild(name);
 
     const right = document.createElement("div");
     right.className = "file-meta";

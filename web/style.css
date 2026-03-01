@@ -435,8 +435,28 @@ code {
 }
 
 .file-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 13px;
   color: var(--text);
+}
+
+.file-tag {
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--muted);
+}
+.file-tag--dir {
+  border-color: rgba(98,231,180,0.5);
+  color: rgba(98,231,180,0.95);
+}
+.file-tag--file {
+  border-color: rgba(78,161,255,0.5);
+  color: rgba(78,161,255,0.95);
 }
 
 .file-meta {
@@ -445,6 +465,38 @@ code {
   text-align: right;
   font-size: 12px;
   color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .hero__panel {
+    display: none;
+  }
+  .files-toolbar {
+    position: sticky;
+    top: 72px;
+    padding: 8px 0 10px;
+    background: var(--surface);
+    z-index: 2;
+  }
+  .files-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .file-list {
+    max-height: 70vh;
+  }
+  .file-row {
+    grid-template-columns: 1fr;
+  }
+  .file-meta {
+    text-align: left;
+  }
+  .file-preview__media {
+    max-height: 45vh;
+  }
 }
 
 .empty { padding: 18px 6px; text-align: center; }
