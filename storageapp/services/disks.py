@@ -11,6 +11,9 @@ import hashlib
 import uuid
 import shutil
 from fastapi import UploadFile
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DiskService:
@@ -49,7 +52,12 @@ class DiskService:
             return None
         for d in self.provider.list_disks():
             if self._matches_id(d, active):
+                if not d.mountpoint or d.writable is not True:
+                    logger.warning("Active disk not usable (dev=%s mountpoint=%s writable=%s)", d.dev, d.mountpoint, d.writable)
+                    self.state.clear()
+                    return None
                 return d
+        self.state.clear()
         return None
 
     def resolve_disk(self, disk_id: str) -> Optional[Disk]:
