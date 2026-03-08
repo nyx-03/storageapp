@@ -102,6 +102,18 @@ function describeDisk(d) {
   return `${label} · ${size} · ${fs}`;
 }
 
+function formatBytes(bytes) {
+  if (bytes == null) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let val = bytes;
+  let idx = 0;
+  while (val >= 1024 && idx < units.length - 1) {
+    val /= 1024;
+    idx += 1;
+  }
+  return `${val.toFixed(val >= 10 || idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
 function badge(text, cls) {
   const el = document.createElement("span");
   el.className = `badge ${cls || ""}`.trim();
@@ -149,9 +161,13 @@ function renderDiskList() {
 
     const meta = document.createElement("div");
     meta.className = "meta";
+    const used = d.used_bytes != null && d.total_bytes != null
+      ? `${formatBytes(d.used_bytes)} / ${formatBytes(d.total_bytes)}`
+      : "—";
     meta.innerHTML = `
       <div><strong>Type</strong> ${d.rm ? "Amovible" : "Fixe"} · <strong>Transport</strong> ${d.tran || "?"}</div>
       <div><strong>FS</strong> ${d.fstype || "?"} · <strong>Taille</strong> ${d.size || "?"}</div>
+      <div><strong>Occupation</strong> ${used}</div>
       <div><strong>Chemin</strong> <code>${d.mountpoint || "—"}</code></div>
     `;
     left.appendChild(meta);

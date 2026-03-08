@@ -68,11 +68,6 @@ def system_page():
 def files_page():
     return FileResponse(str(WEB_DIR / "files.html"))
 
-
-@app.get("/upload")
-def upload_page():
-    return FileResponse(str(WEB_DIR / "upload.html"))
-
 provider = LinuxLsblkProvider() if APP_ENV == "pi" else MockDiskProvider()
 state = ActiveDiskState(STATE_FILE)
 service = DiskService(provider=provider, state=state)

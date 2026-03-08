@@ -7,6 +7,9 @@ from pathlib import Path
 from datetime import date
 import os
 import re
+import hashlib
+import uuid
+import shutil
 from fastapi import UploadFile
 
 
@@ -23,6 +26,21 @@ class DiskService:
         for d in disks:
             # on ajoute dynamiquement un attribut (FastAPI le serialise si on le met dans dict)
             pass
+        for d in disks:
+            if not d.mountpoint:
+                d.total_bytes = None
+                d.used_bytes = None
+                d.free_bytes = None
+                continue
+            try:
+                usage = shutil.disk_usage(d.mountpoint)
+                d.total_bytes = usage.total
+                d.used_bytes = usage.used
+                d.free_bytes = usage.free
+            except Exception:
+                d.total_bytes = None
+                d.used_bytes = None
+                d.free_bytes = None
         return disks
 
     def get_active(self) -> Optional[Disk]:
@@ -106,6 +124,8 @@ class DiskService:
 
         base_dir = Path(active.mountpoint) / "uploads" / date.today().isoformat()
         base_dir.mkdir(parents=True, exist_ok=True)
+        tmp_dir = Path(active.mountpoint) / ".storageapp" / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
 
         saved = []
         errors = []
@@ -114,6 +134,7 @@ class DiskService:
 
         for f in files:
             dest = None
+            tmp = None
             try:
                 original = f.filename or "file"
                 safe = self._safe_filename(original)
@@ -132,8 +153,11 @@ class DiskService:
                             break
                         i += 1
 
-                # Streaming vers disque (important pour vidéos)
-                with dest.open("wb") as out:
+                tmp = tmp_dir / f"{uuid.uuid4().hex}.part"
+                hasher = hashlib.sha256()
+
+                # Streaming vers fichier temporaire
+                with tmp.open("wb") as out:
                     while True:
                         chunk = f.file.read(1024 * 1024)
                         if not chunk:
@@ -144,7 +168,22 @@ class DiskService:
                             raise ValueError("Upload size limit exceeded")
 
                         out.write(chunk)
+                        hasher.update(chunk)
                         total_written += len(chunk)
+                    out.flush()
+                    os.fsync(out.fileno())
+
+                # Vérification d'intégrité: relecture + hash
+                expected_hash = hasher.hexdigest()
+                verify_hash = hashlib.sha256()
+                with tmp.open("rb") as verify_in:
+                    for chunk in iter(lambda: verify_in.read(1024 * 1024), b""):
+                        verify_hash.update(chunk)
+                if verify_hash.hexdigest() != expected_hash:
+                    raise ValueError("Checksum mismatch")
+
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                tmp.replace(dest)
 
                 size = dest.stat().st_size
                 saved.append({
@@ -153,14 +192,16 @@ class DiskService:
                     "path": str(dest),
                     "bytes": size,
                     "content_type": f.content_type,
+                    "sha256": expected_hash,
                 })
 
             except Exception as e:
-                if dest and dest.exists():
-                    try:
-                        dest.unlink()
-                    except Exception:
-                        pass
+                for path in [dest, tmp]:
+                    if path and path.exists():
+                        try:
+                            path.unlink()
+                        except Exception:
+                            pass
                 errors.append({
                     "filename": getattr(f, "filename", None),
                     "error": str(e),

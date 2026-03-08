@@ -18,3 +18,6 @@ class Disk(BaseModel):
     is_usb: Optional[bool] = None
     uuid: Optional[str] = None
     partuuid: Optional[str] = None
+    total_bytes: Optional[int] = None
+    used_bytes: Optional[int] = None
+    free_bytes: Optional[int] = None
