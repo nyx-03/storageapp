@@ -307,6 +307,13 @@ def api_resume_job(job_id: str):
     return {"job": asdict(job)}
 
 
+@app.post("/api/import-jobs/{job_id}/delete")
+def api_delete_job(job_id: str):
+    if not job_store.delete(job_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"ok": True}
+
+
 # System actions
 
 @app.post("/api/system/shutdown")

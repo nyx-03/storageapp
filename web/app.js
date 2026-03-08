@@ -341,6 +341,7 @@ function renderImportJobs(jobs) {
     const icon = state === "done" ? "✅" : state === "failed" ? "❌" : state === "verifying" ? "🔎" : state === "copying" ? "⏳" : "🕘";
     const progress = j.progress || {};
     const pct = progress.total ? Math.round((progress.bytes_done / progress.total) * 100) : null;
+    const phase = state === "verifying" ? "Vérification" : "Copie";
     const verified = j.integrity?.verified ? " · vérifié" : "";
     const err = j.last_error?.message ? `<div class="muted">${j.last_error.message}</div>` : "";
     const actions = [];
@@ -349,13 +350,14 @@ function renderImportJobs(jobs) {
     if (["queued", "copying", "verifying", "retrying"].includes(state)) {
       actions.push(`<button class="btn btn--ghost job-action" data-action="cancel" data-id="${j.id}">Pause</button>`);
     }
+    if (state === "done") actions.push(`<button class="btn btn--ghost job-action" data-action="delete" data-id="${j.id}">Retirer</button>`);
     return `
       <div class="row" style="grid-template-columns: 1fr;">
         <div class="row__title" style="justify-content: space-between;">
           <strong>${icon} Import</strong>
           <span class="badge ${state === "done" ? "badge--ok" : state === "failed" ? "badge--danger" : "badge--warn"}">${state}${verified}</span>
         </div>
-        ${pct != null ? `<div class="muted">Progression: ${pct}%</div>` : ""}
+        ${pct != null ? `<div class="muted">${phase}: ${pct}%</div>` : ""}
         ${err}
         ${actions.length ? `<div class="actions">${actions.join("")}</div>` : ""}
       </div>

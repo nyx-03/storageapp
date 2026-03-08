@@ -140,6 +140,12 @@ class JobStore:
         except Exception:
             logger.exception("Failed to persist jobs")
 
+    def delete(self, jid: str) -> bool:
+        with self._lock:
+            existed = self.jobs.pop(jid, None) is not None
+        if existed:
+            self._save_to_disk()
+        return existed
     def set_state(self, job: Job, state: str, error: Optional[JobError] = None) -> None:
         job.state = state
         job.last_error = error
@@ -310,9 +316,11 @@ class JobRunner:
                 src_hash = _copy_tree_with_hash(self.store, job, src_root, tmp_dir)
                 job.integrity.source_sha256 = src_hash
                 job.state = "verifying"
+                job.progress.bytes_done = 0
+                job.progress.speed = None
                 self.store.update(job)
 
-                dest_hash = _hash_tree(tmp_dir)
+                dest_hash = _hash_tree_with_progress(self.store, job, tmp_dir)
                 job.integrity.dest_sha256 = dest_hash
                 if src_hash and src_hash != dest_hash:
                     raise _JobError("CHECKSUM_MISMATCH", "Checksum mismatch")
@@ -334,9 +342,11 @@ class JobRunner:
                 src_hash = _copy_file_with_hash(self.store, job, src_root, tmp_file)
                 job.integrity.source_sha256 = src_hash
                 job.state = "verifying"
+                job.progress.bytes_done = 0
+                job.progress.speed = None
                 self.store.update(job)
 
-                dest_hash = _hash_file(tmp_file)
+                dest_hash = _hash_file_with_progress(self.store, job, tmp_file)
                 job.integrity.dest_sha256 = dest_hash
                 if src_hash and src_hash != dest_hash:
                     raise _JobError("CHECKSUM_MISMATCH", "Checksum mismatch")
@@ -489,6 +499,46 @@ def _hash_tree(root: Path) -> str:
         tree_hasher.update(str(size).encode("utf-8"))
         tree_hasher.update(b"\0")
         tree_hasher.update(bytes.fromhex(file_hash))
+    return tree_hasher.hexdigest()
+
+
+def _hash_file_with_progress(store: JobStore, job: Job, path: Path) -> str:
+    hasher = hashlib.sha256()
+    total = path.stat().st_size
+    job.progress.total = total
+    job.progress.bytes_done = 0
+    start = time.time()
+    store.update(job)
+
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            hasher.update(chunk)
+            job.progress.bytes_done += len(chunk)
+            job.progress.speed = job.progress.bytes_done / max(time.time() - start, 0.001)
+            store.update(job)
+    return hasher.hexdigest()
+
+
+def _hash_tree_with_progress(store: JobStore, job: Job, root: Path) -> str:
+    tree_hasher = hashlib.sha256()
+    bytes_done = 0
+    start = time.time()
+
+    for rel, path, size in _collect_files(root):
+        file_hasher = hashlib.sha256()
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                file_hasher.update(chunk)
+                bytes_done += len(chunk)
+                job.progress.bytes_done = bytes_done
+                job.progress.speed = bytes_done / max(time.time() - start, 0.001)
+                store.update(job)
+        tree_hasher.update(rel.encode("utf-8"))
+        tree_hasher.update(b"\0")
+        tree_hasher.update(str(size).encode("utf-8"))
+        tree_hasher.update(b"\0")
+        tree_hasher.update(file_hasher.digest())
+
     return tree_hasher.hexdigest()
 
 
