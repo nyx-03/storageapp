@@ -37,7 +37,7 @@ def _parse_mountpoint_from_udisksctl(output: str) -> str:
 
 
 def _udisks_unmount(dev: str) -> None:
-    subprocess.run(["udisksctl", "unmount", "-b", dev], capture_output=True, text=True)
+    _run(["udisksctl", "unmount", "-b", dev])
 
 
 def _udisks_mount(dev: str, options: str | None = None) -> str:
@@ -59,8 +59,17 @@ def _ensure_mounted_and_writable(dev: str, fstype: str | None) -> tuple[str | No
         if _is_already_mounted_error(e):
             mp = _lsblk_mountpoint(dev) or _mountpoint_from_error(e)
             if mp:
-                logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
-                return mp, _test_writable(mp)
+                if _test_writable(mp):
+                    logger.info("device already mounted (using existing mountpoint): %s -> %s", dev, mp)
+                    return mp, True
+                logger.warning("device already mounted but not writable, attempting remount: %s", dev)
+                try:
+                    _udisks_unmount(dev)
+                    mp = _udisks_mount(dev)
+                    return mp, _test_writable(mp)
+                except Exception as e2:
+                    logger.warning("remount failed for %s: %s", dev, e2)
+                    return mp, False
         if _is_polkit_error(e):
             logger.warning("udisksctl mount requires polkit authorization for %s", dev)
             raise RuntimeError(_polkit_message())
@@ -211,6 +220,8 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
                 logger.info("lsblk ignore part=%s reason=parent_not_usb", name)
                 ignored += 1
                 return
+            parent_disk = usb_disks.get(parent_name) if parent_name else None
+            disk_src = current_disk or parent_disk
 
             disk = Disk(
                 dev=f"/dev/{name}",
@@ -218,8 +229,8 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
                 fstype=fstype,
                 size=node.get("size"),
                 mountpoint=mp,
-                tran=current_disk.get("tran") if current_disk else None,
-                rm=bool(current_disk.get("rm")) if current_disk and current_disk.get("rm") is not None else None,
+                tran=disk_src.get("tran") if disk_src else None,
+                rm=bool(disk_src.get("rm")) if disk_src and disk_src.get("rm") is not None else None,
             )
             disk.parent_dev = f"/dev/{parent_name}" if parent_name else None
             disk.is_usb = True
@@ -252,7 +263,9 @@ def _select_usb_partitions(data: dict) -> list[Disk]:
             if f"/dev/{name}" in part_names:
                 continue
             parent_name = dev.get("pkname") or next((d for d in usb_disks.keys() if _belongs_to_disk(name, d)), None)
-            if not parent_name:
+            if not parent_name or parent_name not in usb_disks:
+                logger.info("lsblk ignore part=%s reason=parent_not_usb", name)
+                ignored += 1
                 continue
             fstype = (dev.get("fstype") or "").lower() or None
             mp = dev.get("mountpoint")

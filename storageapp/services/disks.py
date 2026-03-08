@@ -114,7 +114,12 @@ class DiskService:
         # Limite raisonnable
         return name[:180]
 
-    def save_uploads(self, files: List[UploadFile], max_total_bytes: Optional[int] = None) -> Dict[str, Any]:
+    def save_uploads(
+        self,
+        files: List[UploadFile],
+        max_total_bytes: Optional[int] = None,
+        expected_hashes: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
         Sauvegarde les uploads dans:
           <mountpoint>/uploads/YYYY-MM-DD/<filename>
@@ -140,7 +145,7 @@ class DiskService:
         total_written = 0
         limit_exceeded = False
 
-        for f in files:
+        for idx, f in enumerate(files):
             dest = None
             tmp = None
             try:
@@ -189,6 +194,10 @@ class DiskService:
                         verify_hash.update(chunk)
                 if verify_hash.hexdigest() != expected_hash:
                     raise ValueError("Checksum mismatch")
+                if expected_hashes:
+                    client_hash = expected_hashes[idx]
+                    if client_hash != expected_hash:
+                        raise ValueError("Checksum mismatch")
 
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 tmp.replace(dest)

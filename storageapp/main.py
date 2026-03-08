@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Form
 from pydantic import BaseModel
 
 from fastapi.staticfiles import StaticFiles
@@ -119,7 +119,11 @@ def api_set_active(req: SetActiveRequest):
 
 
 @app.post("/api/upload")
-def api_upload(request: Request, files: List[UploadFile] = File(...)):
+def api_upload(
+    request: Request,
+    files: List[UploadFile] = File(...),
+    sha256s: str | None = Form(None),
+):
     """
     Upload multi-fichiers vers le disque actif.
     Écrit en streaming (pas tout en RAM).
@@ -134,7 +138,20 @@ def api_upload(request: Request, files: List[UploadFile] = File(...)):
             pass
 
     try:
-        result = service.save_uploads(files, max_total_bytes=max_bytes)
+        if not sha256s:
+            raise HTTPException(status_code=400, detail="Missing sha256 list")
+        try:
+            import json
+            hashes = json.loads(sha256s)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid sha256 list")
+        if not isinstance(hashes, list) or len(hashes) != len(files):
+            raise HTTPException(status_code=400, detail="sha256 list length mismatch")
+        for h in hashes:
+            if not isinstance(h, str) or len(h) != 64:
+                raise HTTPException(status_code=400, detail="Invalid sha256 value")
+
+        result = service.save_uploads(files, max_total_bytes=max_bytes, expected_hashes=hashes)
         return result
     except ValueError as e:
         msg = str(e)

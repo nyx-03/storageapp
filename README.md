@@ -77,7 +77,6 @@ Variables d’environnement (exemple) :
 export STORAGEAPP_ENV=dev
 export STORAGEAPP_STATE_FILE=./.state/state.json
 export STORAGEAPP_JOBS_FILE=./.state/import_jobs.json
-export STORAGEAPP_API_KEY=changeme
 ```
 
 Lancement :
@@ -115,7 +114,6 @@ WorkingDirectory=/opt/storageapp
 Environment="STORAGEAPP_ENV=pi"
 Environment="STORAGEAPP_STATE_FILE=/var/lib/storageapp/state.json"
 Environment="STORAGEAPP_JOBS_FILE=/var/lib/storageapp/import_jobs.json"
-Environment="STORAGEAPP_API_KEY=changeme"
 ExecStart=/opt/storageapp/.venv/bin/uvicorn storageapp.main:app --host 0.0.0.0 --port 8000
 Restart=always
 
@@ -143,7 +141,6 @@ sudo systemctl start storageapp
 - `STORAGEAPP_ENV` : `dev` ou `pi`
 - `STORAGEAPP_STATE_FILE` : fichier d’état disque actif
 - `STORAGEAPP_JOBS_FILE` : fichier de jobs persistants
-- `STORAGEAPP_API_KEY` : clé simple d’API (si activée)
 
 ---
 
